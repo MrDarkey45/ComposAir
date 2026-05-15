@@ -56,7 +56,7 @@ def main() -> int:
             (0, 255, 0),
             2,
         )
-        cv2.imshow("AirPiano camera smoke test", frame)
+        cv2.imshow("ComposAir camera smoke test", frame)
         frames += 1
 
         if cv2.waitKey(1) & 0xFF == ord("q"):

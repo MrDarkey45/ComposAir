@@ -1,12 +1,14 @@
 # ComposAir architecture and design notes
 
-Internal design document for AirPiano (renamed to ComposAir).
+Internal design document for ComposAir. Captures the project overview, design decisions, build plan, and code conventions.
 
 ## Project overview
 
-AirPiano is a real-time, finger-tracked MIDI instrument. The user plays it by pinching their thumb to a fingertip in front of a webcam; the program detects the pinch, picks a note from the current scale, and plays it through a built-in software synthesizer. An optional second hand provides continuous expression (volume, filter, vibrato).
+ComposAir is a real-time, finger-tracked MIDI instrument. The user plays it by pinching their thumb to a fingertip in front of a webcam; the program detects the pinch, picks a note from the current scale, and plays it through a built-in software synthesizer. An optional second hand provides continuous expression (volume, filter, vibrato).
 
-This is a personal, polished project — the goal is a tool actually used to make music, not a demo. Code quality matters.
+ComposAir has two goals:
+1. **Music-from-scratch idea capture** - output is MIDI, intended to be brought into a DAW (FL Studio / Reaper / Ableton / etc.) for arrangement, layering, and production. ComposAir is the input device + scratchpad, not a DAW replacement.
+2. **Portfolio piece** - code quality, README polish, and demo-ability matter beyond just "it works on my machine." Treat this as something an interviewer will skim.
 
 ## Hardware / environment
 
@@ -25,13 +27,13 @@ This is a personal, polished project — the goal is a tool actually used to mak
 | Math | `numpy` | distances, velocity calculations |
 | Config | `PyYAML` | All tunable values live in `config.yaml` |
 
-**Python version:** 3.10–3.12. **Do not** use 3.13 — MediaPipe lacks Windows wheels for it.
+**Python version:** 3.10-3.12. **Do not** use 3.13 - MediaPipe lacks Windows wheels for it.
 
 ## File structure
 
 ```
-airpiano/
-├── airpiano/
+ComposAir/
+├── composair/
 │   ├── __init__.py
 │   ├── main.py          # entry point, main loop
 │   ├── tracker.py       # MediaPipe wrapper, landmark extraction
@@ -40,30 +42,30 @@ airpiano/
 │   ├── scales.py        # scale theory, key/scale data structures, transposition
 │   ├── mapping.py       # finger + octave band → MIDI note number
 │   ├── modulation.py    # second-hand → MIDI CC
+│   ├── recorder.py      # MIDI file recording (Phase 5)
 │   └── ui.py            # OpenCV overlay (landmarks, active fingers, key/scale display)
 ├── tests/
 │   ├── test_camera.py   # smoke test: webcam works
 │   ├── test_synth.py    # smoke test: FluidSynth plays a note
 │   └── ...
-├── soundfonts/          # .sf2 files (gitignored — too big)
+├── soundfonts/          # .sf2 files (gitignored - too big)
+├── documents/           # ComposAir architecture and design notes, README.md, timelines, planning docs
 ├── config.example.yaml  # checked in, copied to config.yaml on first run
 ├── config.yaml          # gitignored, user's actual config
-├── requirements.txt
-├── README.md
-└── ARCHITECTURE.md
+└── requirements.txt
 ```
 
 ## Design decisions (and why)
 
 **Pinch trigger.** Thumb-to-fingertip distance threshold. Intentional, reliable, gives clean note-on/note-off events. Tap-based triggers misfire; zones break flow.
 
-**4 pinches per hand × hand height = octave bands.** 4 fingers (thumb-to-index/middle/ring/pinky) × 3–4 octave bands gives 12–16 notes from one hand. Bands are absolute Y ranges with hysteresis to prevent flicker at borders.
+**4 pinches per hand × hand height = octave bands.** 4 fingers (thumb-to-index/middle/ring/pinky) × 3-4 octave bands gives 12-16 notes from one hand. Bands are absolute Y ranges with hysteresis to prevent flicker at borders.
 
-**Fingers default to scale degrees 1, 3, 5, 7.** Chord tones — anything played sounds musical. User-configurable to stepwise (1-2-3-4) or custom mapping via `config.yaml`.
+**Fingers default to scale degrees 1, 3, 5, 7.** Chord tones - anything played sounds musical. User-configurable to stepwise (1-2-3-4) or custom mapping via `config.yaml`.
 
 **Always scale-locked.** The point is to make music, not hit wrong notes. Every output note snaps to the active key+scale.
 
-**Velocity from gesture speed.** The rate of thumb-fingertip distance closure just before the pinch threshold maps to MIDI velocity (1–127). This is what makes it feel like an instrument vs. a switch.
+**Velocity from gesture speed.** The rate of thumb-fingertip distance closure just before the pinch threshold maps to MIDI velocity (1-127). This is what makes it feel like an instrument vs. a switch.
 
 **Second hand: modulation only, never plays notes.** Playing hand always plays; modulation hand always modulates. No mode-switching ambiguity. Default mapping: second-hand height → CC74 (filter cutoff).
 
@@ -71,23 +73,24 @@ airpiano/
 
 ## Phased build plan
 
-We're building this in **phases**. Each phase produces a working, playable thing. **Do not skip ahead** — finish a phase, confirm it works, then move on.
+We're building this in **phases**. Each phase produces a working, playable thing. **Do not skip ahead** - finish a phase, confirm it works, then move on.
 
-1. **Walking skeleton** — webcam → MediaPipe → detect one pinch (thumb+index only) → play a fixed MIDI note. Goal: one sound from one pinch.
-2. **Multi-finger AirPiano** — all 4 pinches on one hand → 4 fixed notes, proper note-on/note-off lifecycle, visual overlay showing active finger.
-3. **Scale system + octave shift** — `scales.py` with major, minor, pentatonic (major + minor), dorian, harmonic minor. Hand Y → octave band. Fingers → scale degrees per `config.yaml`.
-4. **Velocity from gesture speed** — replace fixed velocity 100 with gesture-speed-derived velocity. Needs a short window of recent positions per fingertip.
-5. **Second-hand modulation** — detect both hands, classify left vs. right, map non-playing hand's Y to a CC.
-6. **Key/scale switching** — keyboard hotkeys to change key (1–7) and scale (single letters), on-screen indicator.
-7. **Polish** — instrument switching ([/]), config file, MIDI file recording, latency tuning, README screenshots.
+1. **Walking skeleton** - webcam → MediaPipe → detect one pinch (thumb+index only) → play a fixed MIDI note. Goal: one sound from one pinch.
+2. **Multi-finger play** - all 4 pinches on one hand → 4 fixed notes, proper note-on/note-off lifecycle, visual overlay showing active finger.
+3. **Scale system + octave shift** - `scales.py` with major, minor, pentatonic (major + minor), dorian, harmonic minor. Hand Y → octave band. Fingers → scale degrees per `config.yaml`.
+4. **Velocity from gesture speed** - replace fixed velocity 100 with gesture-speed-derived velocity. Needs a short window of recent positions per fingertip.
+5. **MIDI file recording** - `recorder.py` captures note-on/note-off events with timestamps, writes a valid `.mid` file on stop. Toggle via `R` hotkey. **This is load-bearing for the user's DAW-paired workflow** - promoted ahead of second-hand modulation.
+6. **Second-hand modulation** - detect both hands, classify left vs. right, map non-playing hand's Y to a CC. Recorded into the MIDI file as a CC track.
+7. **Key/scale/instrument switching** - keyboard hotkeys to change key (1-7), scale (single letters), and instrument ([/]). On-screen indicator.
+8. **Polish** - latency tuning, demo video/GIF for README, screenshots, architecture diagram, README portfolio pass.
 
-**Current phase: 1 (walking skeleton) — not yet started.**
+**Current phase: 1 (walking skeleton) - environment set up, no Phase 1 code yet.**
 
 ## Code conventions
 
 - **Type hints on all functions.** Use `from __future__ import annotations` at the top of every module.
 - **Docstrings** (Google style) on every public function and class.
-- **One module per responsibility.** Keep `main.py` lean — it should read like an outline of the loop.
+- **One module per responsibility.** Keep `main.py` lean - it should read like an outline of the loop.
 - **Logging, not print.** Configure `logging` once in `main.py`. Use module-level loggers (`logger = logging.getLogger(__name__)`).
 - **Constants in `UPPER_CASE`** at module top.
 - **No global mutable state.** Pass dependencies in via constructors.
@@ -104,7 +107,7 @@ We're building this in **phases**. Each phase produces a working, playable thing
 pip install -r requirements.txt
 
 # Run the app
-python -m airpiano.main
+python -m composair.main
 
 # Smoke tests
 python tests/test_camera.py

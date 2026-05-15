@@ -1,6 +1,6 @@
-# AirPiano configuration.
+# ComposAir configuration.
 # Copy this file to config.yaml and edit as needed.
-# config.yaml is gitignored — your local edits stay local.
+# config.yaml is gitignored - your local edits stay local.
 
 # --- Audio / synth ---
 soundfont: soundfonts/GeneralUser-GS.sf2

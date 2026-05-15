@@ -15,7 +15,7 @@ from pathlib import Path
 import fluidsynth
 
 SOUNDFONT = Path(__file__).resolve().parent.parent / "soundfonts" / "GeneralUser-GS.sf2"
-AUDIO_DRIVER = "dsound"  # DirectSound — universal on Windows
+AUDIO_DRIVER = "dsound"  # DirectSound - universal on Windows
 GM_PROGRAM = 0           # 0 = Acoustic Grand Piano
 MIDI_NOTE = 60           # middle C
 VELOCITY = 100
