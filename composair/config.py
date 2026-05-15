@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from .gestures import Finger
+from .gestures import Finger, VelocityConfig
 from .mapping import BandSelectorConfig
 from .scales import KEY_OFFSETS, SCALES
 
@@ -53,6 +53,9 @@ class Config:
     # Octave band selection (controls how hand Y position maps to octave)
     octave_bands: BandSelectorConfig
 
+    # Gesture-speed -> MIDI velocity mapping
+    velocity: VelocityConfig
+
 
 def load_config() -> Config:
     """Read config.yaml (or config.example.yaml as fallback) and return a Config."""
@@ -75,6 +78,7 @@ def load_config() -> Config:
     key = _validate_key(str(data["key"]))
     scale = _validate_scale(str(data["scale"]))
     octave_bands = _parse_octave_bands(data["octave_bands"])
+    velocity = _parse_velocity(data["velocity"])
 
     return Config(
         soundfont=soundfont_path,
@@ -91,6 +95,7 @@ def load_config() -> Config:
         scale=scale,
         finger_degrees=finger_degrees,
         octave_bands=octave_bands,
+        velocity=velocity,
     )
 
 
@@ -133,4 +138,14 @@ def _parse_octave_bands(raw: dict[str, object]) -> BandSelectorConfig:
         num_bands=int(raw["count"]),  # type: ignore[arg-type]
         base_octave=int(raw["base_octave"]),  # type: ignore[arg-type]
         hysteresis=float(raw["hysteresis"]),  # type: ignore[arg-type]
+    )
+
+
+def _parse_velocity(raw: dict[str, object]) -> VelocityConfig:
+    return VelocityConfig(
+        min_velocity=int(raw["min"]),  # type: ignore[arg-type]
+        max_velocity=int(raw["max"]),  # type: ignore[arg-type]
+        default=int(raw["default"]),  # type: ignore[arg-type]
+        window_ms=float(raw["window_ms"]),  # type: ignore[arg-type]
+        fast_closure_rate=float(raw["fast_closure_rate"]),  # type: ignore[arg-type]
     )

@@ -41,6 +41,23 @@ finger_degrees:
   ring: 5    # fifth
   pinky: 7   # seventh
 
+# --- Velocity from gesture speed (Phase 4) ---
+# Maps how fast you close the pinch to MIDI velocity (loudness).
+# A slow, gentle pinch plays softly; a fast, decisive pinch plays loudly.
+#
+# window_ms: how far back to look when measuring closing speed (typical 100-200 ms).
+# fast_closure_rate: closure speed (in normalized-distance units per second)
+#   that hits max_velocity. Anything faster clamps to max. Lower this if
+#   you find it hard to play loud; raise it if every pinch is too loud.
+# default: fallback velocity used in the first few frames after startup,
+#   when there aren't enough samples to estimate slope.
+velocity:
+  min: 40
+  max: 120
+  default: 90
+  window_ms: 150
+  fast_closure_rate: 2.0
+
 # --- Octave bands (Phase 3) ---
 # The vertical screen is divided into N equal-height bands. Wrist Y
 # position determines which band is active; higher hand = higher octave.

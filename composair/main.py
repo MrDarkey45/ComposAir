@@ -1,8 +1,9 @@
 """ComposAir entry point.
 
-Phase 3: webcam -> hand tracking -> 4-way pinch detection -> note
-resolved from active key + scale + scale degree (per finger) + octave
-band (per wrist Y). Press Q to quit.
+Phase 4: webcam -> hand tracking -> 4-way pinch detection -> note
+resolved from active key + scale + scale degree + octave band. Velocity
+is derived from how fast you close the pinch (gesture speed). Press Q
+to quit.
 
 Run from the project root:
     python -m composair.main
@@ -24,6 +25,7 @@ from .gestures import (
     PinchDetector,
     PinchEvent,
     Point2D,
+    VelocityEstimator,
     normalized_pinch_distance,
 )
 from .mapping import OctaveBandSelector, resolve_midi_note
@@ -37,10 +39,9 @@ from .ui import (
     draw_octave_bands,
     draw_pinch_indicators,
     draw_scale_readout,
+    draw_velocity_readout,
 )
 
-# Velocity stays fixed until Phase 4 derives it from gesture speed.
-PHASE3_VELOCITY = 100
 WINDOW_TITLE = "ComposAir"
 
 logger = logging.getLogger(__name__)
@@ -71,18 +72,24 @@ def main() -> int:
                 int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
                 cap.get(cv2.CAP_PROP_FPS))
 
-    # One detector per finger so they fire independently; same thresholds.
+    # One detector + one velocity estimator per finger so they fire
+    # independently; same thresholds and velocity config.
     detectors: dict[Finger, PinchDetector] = {
         finger: PinchDetector(on_threshold=cfg.pinch_threshold,
                               off_threshold=cfg.pinch_release)
         for finger in ALL_FINGERS
     }
+    estimators: dict[Finger, VelocityEstimator] = {
+        finger: VelocityEstimator(cfg.velocity) for finger in ALL_FINGERS
+    }
     selector = OctaveBandSelector(cfg.octave_bands)
     spec = ScaleSpec(key=cfg.key, scale_name=cfg.scale)
 
     # MIDI note that each currently-held finger committed to at note-on,
-    # so note-off sends the matching value even if the wrist has moved bands.
+    # so note-off sends the matching value even if the hand has moved bands.
     held_notes: dict[Finger, int] = {}
+    # Most recent velocity resolved per finger, for the UI readout.
+    last_velocity: dict[Finger, int] = {}
 
     with Synth(soundfont=cfg.soundfont, instrument=cfg.instrument,
                audio_driver=cfg.audio_driver, sample_rate=cfg.sample_rate) as synth, \
@@ -118,16 +125,20 @@ def main() -> int:
                     # octave band. More natural reach.
                     hand_y = landmarks[MIDDLE_FINGER_MCP].y
                     current_band = selector.update(hand_y)
+                    now = time.perf_counter()
 
                     for finger in ALL_FINGERS:
                         d = normalized_pinch_distance(landmarks, finger)
+                        estimators[finger].add_sample(now, d)
                         event = detectors[finger].update(d)
                         if event is PinchEvent.PINCH_ON:
                             note = resolve_midi_note(
                                 spec, cfg.finger_degrees, finger, current_band, selector
                             )
+                            velocity = estimators[finger].estimate_velocity()
                             held_notes[finger] = note
-                            synth.note_on(note, PHASE3_VELOCITY)
+                            last_velocity[finger] = velocity
+                            synth.note_on(note, velocity)
                         elif event is PinchEvent.PINCH_OFF:
                             note = held_notes.pop(finger, None)
                             if note is not None:
@@ -137,6 +148,7 @@ def main() -> int:
 
                     draw_hand(frame, landmarks)
                     draw_pinch_indicators(frame, landmarks, pinched, distances)
+                    draw_velocity_readout(frame, pinched, last_velocity)
 
                 draw_octave_bands(frame, selector.boundaries, current_band)
                 draw_scale_readout(frame, spec, selector.octave_for_band(current_band))

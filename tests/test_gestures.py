@@ -23,12 +23,23 @@ from composair.gestures import (
     PinchEvent,
     Point2D,
     THUMB_TIP,
+    VelocityConfig,
+    VelocityEstimator,
     WRIST,
     euclidean,
     hand_size,
     normalized_pinch_distance,
     thumb_index_distance,
     thumb_to_finger_distance,
+)
+
+
+_DEFAULT_VEL_CFG = VelocityConfig(
+    min_velocity=40,
+    max_velocity=120,
+    default=90,
+    window_ms=150,
+    fast_closure_rate=2.0,
 )
 
 
@@ -153,6 +164,74 @@ def test_four_detectors_fire_independently() -> None:
             assert not detectors[finger].is_pinched, f"{finger} wrongly pinched"
 
 
+def test_velocity_returns_default_with_insufficient_samples() -> None:
+    est = VelocityEstimator(_DEFAULT_VEL_CFG)
+    assert est.estimate_velocity() == _DEFAULT_VEL_CFG.default
+    est.add_sample(0.0, 0.5)
+    assert est.estimate_velocity() == _DEFAULT_VEL_CFG.default
+
+
+def test_velocity_min_when_distance_is_increasing() -> None:
+    """Opening the pinch (distance going up) should not produce a loud note."""
+    est = VelocityEstimator(_DEFAULT_VEL_CFG)
+    est.add_sample(0.00, 0.10)
+    est.add_sample(0.05, 0.15)
+    est.add_sample(0.10, 0.20)
+    assert est.estimate_velocity() == _DEFAULT_VEL_CFG.min_velocity
+
+
+def test_velocity_max_when_closing_fast() -> None:
+    """A closure rate >= fast_closure_rate should saturate at max_velocity."""
+    est = VelocityEstimator(_DEFAULT_VEL_CFG)
+    # Close 0.5 normalized units in 0.1 s = 5 units/sec, well above fast_closure_rate=2.
+    est.add_sample(0.00, 0.50)
+    est.add_sample(0.10, 0.00)
+    assert est.estimate_velocity() == _DEFAULT_VEL_CFG.max_velocity
+
+
+def test_velocity_scales_linearly_in_between() -> None:
+    """A closure rate of exactly fast_closure_rate/2 should produce the midpoint."""
+    est = VelocityEstimator(_DEFAULT_VEL_CFG)
+    # 0.1 unit / 0.1 s = 1 unit/sec = half of fast_closure_rate=2.
+    est.add_sample(0.00, 0.20)
+    est.add_sample(0.10, 0.10)
+    midpoint = (_DEFAULT_VEL_CFG.min_velocity + _DEFAULT_VEL_CFG.max_velocity) // 2
+    velocity = est.estimate_velocity()
+    # Allow +/- 1 for integer rounding.
+    assert abs(velocity - midpoint) <= 1, f"expected near {midpoint}, got {velocity}"
+
+
+def test_velocity_evicts_old_samples_outside_window() -> None:
+    """Samples older than window_ms must not contribute to the estimate."""
+    est = VelocityEstimator(_DEFAULT_VEL_CFG)
+    # Old slow sample, should be evicted.
+    est.add_sample(0.0, 0.50)
+    # Fast close inside the recent 0.1s.
+    est.add_sample(0.30, 0.40)
+    est.add_sample(0.40, 0.10)
+    velocity = est.estimate_velocity()
+    # Only the last two samples should remain (window is 150ms; 0.4 - 0.0 = 0.4s evicted 0.0).
+    # Closure 0.3 over 0.1s = 3.0 unit/s > fast_closure_rate, so max.
+    assert velocity == _DEFAULT_VEL_CFG.max_velocity
+
+
+def test_velocity_rejects_bad_config() -> None:
+    cases = [
+        VelocityConfig(0, 120, 90, 150, 2.0),     # min < 1
+        VelocityConfig(40, 200, 90, 150, 2.0),    # max > 127
+        VelocityConfig(120, 40, 90, 150, 2.0),    # min > max
+        VelocityConfig(40, 120, 90, 0, 2.0),      # window_ms <= 0
+        VelocityConfig(40, 120, 90, 150, 0),      # fast_closure_rate <= 0
+        VelocityConfig(40, 120, 0, 150, 2.0),     # default out of range
+    ]
+    for cfg in cases:
+        try:
+            VelocityEstimator(cfg)
+        except ValueError:
+            continue
+        raise AssertionError(f"VelocityEstimator should have rejected: {cfg}")
+
+
 def main() -> int:
     tests = [
         test_euclidean_basic,
@@ -165,6 +244,12 @@ def main() -> int:
         test_finger_enum_tip_indices_are_correct,
         test_per_finger_distance_isolates_correct_landmark,
         test_four_detectors_fire_independently,
+        test_velocity_returns_default_with_insufficient_samples,
+        test_velocity_min_when_distance_is_increasing,
+        test_velocity_max_when_closing_fast,
+        test_velocity_scales_linearly_in_between,
+        test_velocity_evicts_old_samples_outside_window,
+        test_velocity_rejects_bad_config,
     ]
     failures = 0
     for t in tests:

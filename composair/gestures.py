@@ -8,6 +8,7 @@ caller doesn't have to debounce.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -132,3 +133,83 @@ class PinchDetector:
             self._pinched = False
             return PinchEvent.PINCH_OFF
         return None
+
+
+@dataclass(frozen=True)
+class VelocityConfig:
+    """Static config for VelocityEstimator."""
+
+    min_velocity: int   # MIDI velocity for the slowest pinch (1-127)
+    max_velocity: int   # MIDI velocity for the fastest pinch
+    window_ms: float    # how far back to look when computing closing speed
+    default: int        # fallback when there aren't enough samples yet
+    fast_closure_rate: float  # normalized-distance-units per second at which
+                              # max_velocity is reached. Speeds above this clamp.
+
+
+class VelocityEstimator:
+    """Tracks recent (time, normalized_distance) samples and maps closing speed
+    to a MIDI velocity at trigger time.
+
+    The estimator is per-finger because each finger has its own distance
+    series. The model: a "fast pinch" closes the thumb-finger gap quickly,
+    producing a steep negative slope in normalized distance over time. The
+    magnitude of that slope, clamped to [0, fast_closure_rate], maps
+    linearly to [min_velocity, max_velocity].
+    """
+
+    def __init__(self, config: VelocityConfig) -> None:
+        if not 1 <= config.min_velocity <= 127:
+            raise ValueError(f"min_velocity must be in 1-127, got {config.min_velocity}")
+        if not 1 <= config.max_velocity <= 127:
+            raise ValueError(f"max_velocity must be in 1-127, got {config.max_velocity}")
+        if config.min_velocity > config.max_velocity:
+            raise ValueError("min_velocity must be <= max_velocity")
+        if config.window_ms <= 0:
+            raise ValueError(f"window_ms must be > 0, got {config.window_ms}")
+        if config.fast_closure_rate <= 0:
+            raise ValueError(f"fast_closure_rate must be > 0, got {config.fast_closure_rate}")
+        if not 1 <= config.default <= 127:
+            raise ValueError(f"default must be in 1-127, got {config.default}")
+        self._cfg = config
+        self._samples: deque[tuple[float, float]] = deque()
+
+    def add_sample(self, timestamp_s: float, normalized_distance: float) -> None:
+        """Record a (time, distance) sample. Old samples outside the window are evicted."""
+        self._samples.append((timestamp_s, normalized_distance))
+        cutoff = timestamp_s - self._cfg.window_ms / 1000.0
+        while self._samples and self._samples[0][0] < cutoff:
+            self._samples.popleft()
+
+    def estimate_velocity(self) -> int:
+        """Compute a MIDI velocity from recent closing speed.
+
+        Returns config.default when there are fewer than 2 samples (no slope
+        can be computed). Returns config.min_velocity when motion is flat
+        or opening (positive slope). Otherwise scales between min and max.
+        """
+        if len(self._samples) < 2:
+            return self._cfg.default
+
+        # Slope = (last - first) / dt. Negative slope means closing.
+        t0, d0 = self._samples[0]
+        t1, d1 = self._samples[-1]
+        dt = t1 - t0
+        if dt <= 1e-6:
+            return self._cfg.default
+
+        slope = (d1 - d0) / dt  # negative when closing
+        closure_rate = -slope   # positive when closing
+        if closure_rate <= 0:
+            return self._cfg.min_velocity
+
+        # Clamp into [0, fast_closure_rate] and linearly map to [min, max].
+        normalized = min(closure_rate / self._cfg.fast_closure_rate, 1.0)
+        velocity = self._cfg.min_velocity + normalized * (
+            self._cfg.max_velocity - self._cfg.min_velocity
+        )
+        return max(1, min(127, int(round(velocity))))
+
+    def clear(self) -> None:
+        """Drop all samples. Used on shutdown or after a long tracking gap."""
+        self._samples.clear()

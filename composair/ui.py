@@ -124,3 +124,24 @@ def draw_scale_readout(frame: np.ndarray, spec: ScaleSpec, current_octave: int) 
     (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
     cv2.putText(frame, text, (w - tw - 10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+
+def draw_velocity_readout(
+    frame: np.ndarray,
+    pinched: dict[Finger, bool],
+    last_velocity: dict[Finger, int],
+) -> None:
+    """Below the scale readout: list each currently-pinched finger and its
+    resolved MIDI velocity. Helps the user calibrate how fast a pinch needs
+    to be to play loudly.
+    """
+    h, w = frame.shape[:2]
+    y = 60
+    for finger in ALL_FINGERS:
+        if pinched.get(finger):
+            v = last_velocity.get(finger, 0)
+            text = f"{finger.value}: v{v}"
+            (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.putText(frame, text, (w - tw - 10, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            y += 24
