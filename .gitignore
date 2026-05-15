@@ -34,6 +34,10 @@ soundfonts/
 *.sf2
 *.sf3
 
+# ML model files (download separately, see README)
+models/
+*.task
+
 # SoundFont distribution archive (demo MIDIs, docs, support files)
 documents/GeneralUser_GS_*/
 

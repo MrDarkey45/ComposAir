@@ -15,8 +15,13 @@ camera_height: 720
 camera_fps: 30
 
 # --- Gesture detection ---
-pinch_threshold: 0.05  # normalized thumb-fingertip distance; lower = harder to trigger
-pinch_release: 0.07    # hysteresis: release threshold should be slightly higher
+# Normalized thumb-fingertip distance, where 1.0 = wrist-to-middle-MCP length.
+# Calibrated against natural finger-touch gesture: touching produces d ~= 0.10 to 0.20.
+# Lower pinch_threshold = need to bring fingers closer to trigger (harder).
+# pinch_release should be 30-50% higher than pinch_threshold so the note does
+# not flicker when you hold a near-pinch.
+pinch_threshold: 0.12  # trigger note ON when d falls below this
+pinch_release: 0.16    # trigger note OFF when d rises above this
 
 # --- Musical state (Phase 3+) ---
 key: C
