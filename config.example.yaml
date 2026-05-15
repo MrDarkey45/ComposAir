@@ -1,0 +1,23 @@
+# AirPiano configuration.
+# Copy this file to config.yaml and edit as needed.
+# config.yaml is gitignored — your local edits stay local.
+
+# --- Audio / synth ---
+soundfont: soundfonts/GeneralUser-GS.sf2
+instrument: 0          # General MIDI program number (0 = Acoustic Grand Piano)
+audio_driver: dsound   # Windows: dsound (default), wasapi (lower latency)
+sample_rate: 44100
+
+# --- Camera ---
+camera_index: 0        # 0 = first camera; try 1, 2, ... if you have multiple
+camera_width: 1280
+camera_height: 720
+camera_fps: 30
+
+# --- Gesture detection ---
+pinch_threshold: 0.05  # normalized thumb-fingertip distance; lower = harder to trigger
+pinch_release: 0.07    # hysteresis: release threshold should be slightly higher
+
+# --- Musical state (Phase 3+) ---
+key: C
+scale: major

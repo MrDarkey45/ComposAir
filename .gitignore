@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Project config (user-local)
+config.yaml
+
+# SoundFonts (large binary assets)
+soundfonts/
+*.sf2
+*.sf3
+
+# SoundFont distribution archive (demo MIDIs, docs, support files)
+documents/GeneralUser_GS_*/
+
+# IDE / editor / local tooling
+.vscode/
+.idea/
+.aider-stub/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs / runtime
+*.log
+logs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# MIDI recordings (output)
+recordings/
+*.mid
