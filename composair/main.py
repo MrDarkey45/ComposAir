@@ -1,9 +1,9 @@
 """ComposAir entry point.
 
-Phase 4: webcam -> hand tracking -> 4-way pinch detection -> note
-resolved from active key + scale + scale degree + octave band. Velocity
-is derived from how fast you close the pinch (gesture speed). Press Q
-to quit.
+Phase 5: webcam -> hand tracking -> 4-way pinch detection -> scale and
+octave resolution -> velocity from gesture speed. New in this phase:
+press R to start/stop MIDI file recording (saved under recordings/),
+and [ / ] to cycle through General MIDI instruments. Press Q to quit.
 
 Run from the project root:
     python -m composair.main
@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 import sys
 import time
+
+from pathlib import Path
 
 import cv2
 
@@ -29,6 +31,7 @@ from .gestures import (
     normalized_pinch_distance,
 )
 from .mapping import OctaveBandSelector, resolve_midi_note
+from .recorder import MidiRecorder
 from .scales import ScaleSpec
 from .synth import Synth
 from .tracker import HandTracker
@@ -36,13 +39,17 @@ from .ui import (
     draw_fps,
     draw_hand,
     draw_help,
+    draw_instrument_readout,
     draw_octave_bands,
     draw_pinch_indicators,
+    draw_rec_indicator,
     draw_scale_readout,
     draw_velocity_readout,
 )
 
 WINDOW_TITLE = "ComposAir"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RECORDINGS_DIR = PROJECT_ROOT / "recordings"
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +91,7 @@ def main() -> int:
     }
     selector = OctaveBandSelector(cfg.octave_bands)
     spec = ScaleSpec(key=cfg.key, scale_name=cfg.scale)
+    recorder = MidiRecorder(output_dir=RECORDINGS_DIR)
 
     # MIDI note that each currently-held finger committed to at note-on,
     # so note-off sends the matching value even if the hand has moved bands.
@@ -139,10 +147,12 @@ def main() -> int:
                             held_notes[finger] = note
                             last_velocity[finger] = velocity
                             synth.note_on(note, velocity)
+                            recorder.record_note_on(now, note, velocity)
                         elif event is PinchEvent.PINCH_OFF:
                             note = held_notes.pop(finger, None)
                             if note is not None:
                                 synth.note_off(note)
+                                recorder.record_note_off(time.perf_counter(), note)
                         distances[finger] = d
                         pinched[finger] = detectors[finger].is_pinched
 
@@ -152,6 +162,8 @@ def main() -> int:
 
                 draw_octave_bands(frame, selector.boundaries, current_band)
                 draw_scale_readout(frame, spec, selector.octave_for_band(current_band))
+                draw_instrument_readout(frame, synth.program)
+                draw_rec_indicator(frame, recorder.is_recording, recorder.event_count)
 
                 # Rolling FPS over ~30 frames so the readout is not jittery.
                 frame_count += 1
@@ -164,10 +176,24 @@ def main() -> int:
                 draw_help(frame)
 
                 cv2.imshow(WINDOW_TITLE, frame)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord("q"):
                     logger.info("Quit requested")
                     break
+                elif key == ord("r"):
+                    _toggle_recording(recorder, synth, time.perf_counter())
+                elif key == ord("["):
+                    new_program = synth.program - 1
+                    synth.change_instrument(new_program)
+                    recorder.record_program_change(time.perf_counter(), synth.program)
+                elif key == ord("]"):
+                    new_program = synth.program + 1
+                    synth.change_instrument(new_program)
+                    recorder.record_program_change(time.perf_counter(), synth.program)
         finally:
+            # Stop and save any active recording before tearing down.
+            if recorder.is_recording:
+                recorder.stop()
             # Release every still-held note so the synth does not hang.
             for finger, note in held_notes.items():
                 synth.note_off(note)
@@ -175,6 +201,16 @@ def main() -> int:
             cv2.destroyAllWindows()
 
     return 0
+
+
+def _toggle_recording(recorder: MidiRecorder, synth: Synth, now: float) -> None:
+    """Start or stop the recorder based on its current state."""
+    if recorder.is_recording:
+        path = recorder.stop()
+        if path is not None:
+            logger.info("Recording saved to %s", path)
+    else:
+        recorder.start(now, synth.program)
 
 
 if __name__ == "__main__":

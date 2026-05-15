@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CHANNEL = 0
 DEFAULT_BANK = 0
+MAX_GM_PROGRAM = 127  # General MIDI defines programs 0-127
 
 
 class Synth:
@@ -40,7 +41,26 @@ class Synth:
             raise RuntimeError(f"FluidSynth failed to load SoundFont: {soundfont}")
 
         self._fs.program_select(DEFAULT_CHANNEL, self._sfid, DEFAULT_BANK, instrument)
+        self._program = instrument
         logger.info("Selected instrument %d on channel %d", instrument, DEFAULT_CHANNEL)
+
+    @property
+    def program(self) -> int:
+        """Current General MIDI program number (0-127)."""
+        return self._program
+
+    def change_instrument(self, program: int) -> None:
+        """Switch to a different GM instrument. Wraps program into 0-127.
+
+        Held notes are not automatically released; FluidSynth will let any
+        sounding voices ring out under their original program while new
+        notes use the new program. Most users want a clean handoff, but
+        forcibly cutting notes here would feel jarring.
+        """
+        program = program % (MAX_GM_PROGRAM + 1)
+        self._fs.program_select(DEFAULT_CHANNEL, self._sfid, DEFAULT_BANK, program)
+        self._program = program
+        logger.info("Switched to instrument %d", program)
 
     def note_on(self, midi_note: int, velocity: int = 100) -> None:
         """Trigger a MIDI note. Velocity 1-127."""

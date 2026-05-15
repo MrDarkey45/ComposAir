@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from .gestures import ALL_FINGERS, Finger, Point2D, THUMB_TIP
+from .gm_instruments import name_for
 from .scales import ScaleSpec
 
 # MediaPipe hand landmark connections (pairs of indices to draw as bones).
@@ -82,10 +83,10 @@ def draw_fps(frame: np.ndarray, fps: float) -> None:
 
 
 def draw_help(frame: np.ndarray) -> None:
-    """Bottom-right hint for the quit key."""
+    """Bottom-right hint for the keyboard controls."""
     h, w = frame.shape[:2]
-    cv2.putText(frame, "Q to quit", (w - 130, h - 20),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 2)
+    cv2.putText(frame, "Q quit | R record | [ ] instrument", (w - 360, h - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 180, 180), 2)
 
 
 def draw_octave_bands(
@@ -124,6 +125,24 @@ def draw_scale_readout(frame: np.ndarray, spec: ScaleSpec, current_octave: int) 
     (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
     cv2.putText(frame, text, (w - tw - 10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+
+def draw_instrument_readout(frame: np.ndarray, program: int) -> None:
+    """Below the scale readout: show the active GM instrument."""
+    h, w = frame.shape[:2]
+    text = f"inst {program}: {name_for(program)}"
+    (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+    cv2.putText(frame, text, (w - tw - 10, 165),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 255), 2)
+
+
+def draw_rec_indicator(frame: np.ndarray, is_recording: bool, event_count: int) -> None:
+    """Top-left under the FPS: red REC dot + event count when recording."""
+    if not is_recording:
+        return
+    cv2.circle(frame, (25, 65), 10, color=(0, 0, 255), thickness=-1)
+    cv2.putText(frame, f"REC ({event_count} events)", (45, 72),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
 
 def draw_velocity_readout(
