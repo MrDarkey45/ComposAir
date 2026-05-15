@@ -23,17 +23,33 @@ camera_fps: 30
 pinch_threshold: 0.12  # trigger note ON when d falls below this
 pinch_release: 0.16    # trigger note OFF when d rises above this
 
-# --- Note assignments (Phase 2) ---
-# MIDI note number per finger when that finger pinches the thumb.
-# Defaults form a C major 7 chord (C E G B) which sounds musical out of the box.
-# Phase 3 replaces these with scale-degree mappings.
-# Reference: middle C = 60. Each octave is +12.
-finger_notes:
-  index: 60   # C4 (middle C)
-  middle: 64  # E4
-  ring: 67    # G4
-  pinky: 71   # B4
-
-# --- Musical state (Phase 3+) ---
+# --- Musical state (Phase 3) ---
+# Key letter and scale name. Supported keys: C, C#, D, D#, E, F, F#, G,
+# G#, A, A#, B. Supported scales: major, natural_minor, harmonic_minor,
+# dorian, major_pentatonic, minor_pentatonic.
 key: C
 scale: major
+
+# --- Scale-degree assignments per finger (Phase 3) ---
+# Each finger plays a scale degree (1 = root, 3 = third, 5 = fifth, etc.).
+# Defaults to 1-3-5-7 (chord tones) so anything you play sounds harmonic.
+# Phase 2's raw MIDI note mapping is replaced by this; the actual note is
+# resolved from key + scale + degree + octave at pinch time.
+finger_degrees:
+  index: 1   # root
+  middle: 3  # third
+  ring: 5    # fifth
+  pinky: 7   # seventh
+
+# --- Octave bands (Phase 3) ---
+# The vertical screen is divided into N equal-height bands. Wrist Y
+# position determines which band is active; higher hand = higher octave.
+# base_octave is the octave assigned to the LOWEST band (bottom of screen).
+# Standard piano middle C is in octave 4; base_octave=4 puts middle C at
+# the bottom and the top band one or more octaves above.
+# hysteresis is the extra Y distance the wrist must travel past a band
+# boundary before the band switches; prevents flicker at the borders.
+octave_bands:
+  count: 3
+  base_octave: 4
+  hysteresis: 0.03

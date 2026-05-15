@@ -1,8 +1,8 @@
 """ComposAir entry point.
 
-Phase 2: webcam -> hand tracking -> 4-way pinch detection (thumb to
-index/middle/ring/pinky) -> each finger plays its own fixed MIDI note.
-Press Q to quit.
+Phase 3: webcam -> hand tracking -> 4-way pinch detection -> note
+resolved from active key + scale + scale degree (per finger) + octave
+band (per wrist Y). Press Q to quit.
 
 Run from the project root:
     python -m composair.main
@@ -20,16 +20,27 @@ from .config import load_config
 from .gestures import (
     ALL_FINGERS,
     Finger,
+    MIDDLE_FINGER_MCP,
     PinchDetector,
     PinchEvent,
+    Point2D,
     normalized_pinch_distance,
 )
+from .mapping import OctaveBandSelector, resolve_midi_note
+from .scales import ScaleSpec
 from .synth import Synth
 from .tracker import HandTracker
-from .ui import draw_fps, draw_hand, draw_help, draw_pinch_indicators
+from .ui import (
+    draw_fps,
+    draw_hand,
+    draw_help,
+    draw_octave_bands,
+    draw_pinch_indicators,
+    draw_scale_readout,
+)
 
 # Velocity stays fixed until Phase 4 derives it from gesture speed.
-PHASE2_VELOCITY = 100
+PHASE3_VELOCITY = 100
 WINDOW_TITLE = "ComposAir"
 
 logger = logging.getLogger(__name__)
@@ -66,6 +77,12 @@ def main() -> int:
                               off_threshold=cfg.pinch_release)
         for finger in ALL_FINGERS
     }
+    selector = OctaveBandSelector(cfg.octave_bands)
+    spec = ScaleSpec(key=cfg.key, scale_name=cfg.scale)
+
+    # MIDI note that each currently-held finger committed to at note-on,
+    # so note-off sends the matching value even if the wrist has moved bands.
+    held_notes: dict[Finger, int] = {}
 
     with Synth(soundfont=cfg.soundfont, instrument=cfg.instrument,
                audio_driver=cfg.audio_driver, sample_rate=cfg.sample_rate) as synth, \
@@ -89,24 +106,40 @@ def main() -> int:
                 tracker.submit_frame(frame)
                 hands = tracker.latest_hands()
 
-                # Per-frame snapshot of distances and pinch state, used by the UI.
+                # Per-frame snapshot of state used by the UI.
                 distances: dict[Finger, float] = {}
                 pinched: dict[Finger, bool] = {}
+                current_band = selector.current_band
 
                 if hands:
                     landmarks = hands[0]
+                    # Use middle-finger MCP (knuckle) as the hand's "center" so the
+                    # user doesn't have to lift their whole arm to reach the top
+                    # octave band. More natural reach.
+                    hand_y = landmarks[MIDDLE_FINGER_MCP].y
+                    current_band = selector.update(hand_y)
+
                     for finger in ALL_FINGERS:
                         d = normalized_pinch_distance(landmarks, finger)
                         event = detectors[finger].update(d)
                         if event is PinchEvent.PINCH_ON:
-                            synth.note_on(cfg.finger_notes[finger], PHASE2_VELOCITY)
+                            note = resolve_midi_note(
+                                spec, cfg.finger_degrees, finger, current_band, selector
+                            )
+                            held_notes[finger] = note
+                            synth.note_on(note, PHASE3_VELOCITY)
                         elif event is PinchEvent.PINCH_OFF:
-                            synth.note_off(cfg.finger_notes[finger])
+                            note = held_notes.pop(finger, None)
+                            if note is not None:
+                                synth.note_off(note)
                         distances[finger] = d
                         pinched[finger] = detectors[finger].is_pinched
 
                     draw_hand(frame, landmarks)
                     draw_pinch_indicators(frame, landmarks, pinched, distances)
+
+                draw_octave_bands(frame, selector.boundaries, current_band)
+                draw_scale_readout(frame, spec, selector.octave_for_band(current_band))
 
                 # Rolling FPS over ~30 frames so the readout is not jittery.
                 frame_count += 1
@@ -124,9 +157,8 @@ def main() -> int:
                     break
         finally:
             # Release every still-held note so the synth does not hang.
-            for finger, det in detectors.items():
-                if det.is_pinched:
-                    synth.note_off(cfg.finger_notes[finger])
+            for finger, note in held_notes.items():
+                synth.note_off(note)
             cap.release()
             cv2.destroyAllWindows()
 

@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from .gestures import ALL_FINGERS, Finger, Point2D, THUMB_TIP
+from .scales import ScaleSpec
 
 # MediaPipe hand landmark connections (pairs of indices to draw as bones).
 HAND_CONNECTIONS: tuple[tuple[int, int], ...] = (
@@ -85,3 +86,41 @@ def draw_help(frame: np.ndarray) -> None:
     h, w = frame.shape[:2]
     cv2.putText(frame, "Q to quit", (w - 130, h - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 2)
+
+
+def draw_octave_bands(
+    frame: np.ndarray,
+    boundaries: tuple[float, ...],
+    current_band: int,
+) -> None:
+    """Draw horizontal lines at each band boundary and highlight the current band.
+
+    Boundaries are normalized Y values in (0, 1). The current band is the
+    one whose region contains the wrist. We dim the inactive bands so the
+    active region pops.
+    """
+    h, w = frame.shape[:2]
+    # Draw boundary lines.
+    for y_norm in boundaries:
+        y = int(y_norm * h)
+        cv2.line(frame, (0, y), (w, y), color=(80, 80, 80), thickness=1)
+
+    # Compute the y-range of the current band and label it.
+    # Bands are indexed 0..N-1 from BOTTOM to TOP, so we map band index
+    # to a vertical slice of the screen (lower Y = top of screen = higher band).
+    num_bands = len(boundaries) + 1
+    top_idx = num_bands - 1 - current_band
+    top_y = int(top_idx / num_bands * h)
+    bot_y = int((top_idx + 1) / num_bands * h)
+    cv2.rectangle(frame, (0, top_y), (15, bot_y), color=(0, 200, 255), thickness=-1)
+    cv2.putText(frame, f"band {current_band}", (20, top_y + 25),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+
+
+def draw_scale_readout(frame: np.ndarray, spec: ScaleSpec, current_octave: int) -> None:
+    """Top-right: show the active key, scale, and resolved octave."""
+    h, w = frame.shape[:2]
+    text = f"{spec.key} {spec.scale_name} | oct {current_octave}"
+    (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+    cv2.putText(frame, text, (w - tw - 10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)

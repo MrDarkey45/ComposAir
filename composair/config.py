@@ -13,6 +13,8 @@ from pathlib import Path
 import yaml
 
 from .gestures import Finger
+from .mapping import BandSelectorConfig
+from .scales import KEY_OFFSETS, SCALES
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +43,15 @@ class Config:
     pinch_threshold: float
     pinch_release: float
 
-    # Note assignments: which MIDI note each finger plays
-    finger_notes: dict[Finger, int]
-
-    # Musical state (used from Phase 3 on; loaded now so config schema is stable)
+    # Musical state
     key: str
     scale: str
+
+    # Scale-degree assignment per finger (1-indexed; 1 = root)
+    finger_degrees: dict[Finger, int]
+
+    # Octave band selection (controls how hand Y position maps to octave)
+    octave_bands: BandSelectorConfig
 
 
 def load_config() -> Config:
@@ -66,7 +71,10 @@ def load_config() -> Config:
         data = yaml.safe_load(f)
 
     soundfont_path = (PROJECT_ROOT / data["soundfont"]).resolve()
-    finger_notes = _parse_finger_notes(data["finger_notes"])
+    finger_degrees = _parse_finger_degrees(data["finger_degrees"])
+    key = _validate_key(str(data["key"]))
+    scale = _validate_scale(str(data["scale"]))
+    octave_bands = _parse_octave_bands(data["octave_bands"])
 
     return Config(
         soundfont=soundfont_path,
@@ -79,25 +87,50 @@ def load_config() -> Config:
         camera_fps=int(data["camera_fps"]),
         pinch_threshold=float(data["pinch_threshold"]),
         pinch_release=float(data["pinch_release"]),
-        finger_notes=finger_notes,
-        key=str(data["key"]),
-        scale=str(data["scale"]),
+        key=key,
+        scale=scale,
+        finger_degrees=finger_degrees,
+        octave_bands=octave_bands,
     )
 
 
-def _parse_finger_notes(raw: dict[str, object]) -> dict[Finger, int]:
-    """Convert the YAML mapping {finger_name: midi_note} into a typed dict.
+def _parse_finger_degrees(raw: dict[str, object]) -> dict[Finger, int]:
+    """Convert the YAML mapping {finger_name: scale_degree} into a typed dict.
 
-    Validates that all four fingers are present and every note is in 0-127.
+    Validates that all four fingers are present and degrees are >= 1.
     """
     parsed: dict[Finger, int] = {}
     for finger in Finger:
         if finger.value not in raw:
-            raise ValueError(f"finger_notes missing entry for '{finger.value}'")
-        note = int(raw[finger.value])  # type: ignore[arg-type]
-        if not 0 <= note <= 127:
+            raise ValueError(f"finger_degrees missing entry for '{finger.value}'")
+        degree = int(raw[finger.value])  # type: ignore[arg-type]
+        if degree < 1:
             raise ValueError(
-                f"finger_notes['{finger.value}'] = {note} is outside MIDI range 0-127"
+                f"finger_degrees['{finger.value}'] = {degree} must be >= 1"
             )
-        parsed[finger] = note
+        parsed[finger] = degree
     return parsed
+
+
+def _validate_key(key: str) -> str:
+    if key not in KEY_OFFSETS:
+        raise ValueError(
+            f"unknown key '{key}'. Supported: {', '.join(sorted(KEY_OFFSETS))}"
+        )
+    return key
+
+
+def _validate_scale(scale: str) -> str:
+    if scale not in SCALES:
+        raise ValueError(
+            f"unknown scale '{scale}'. Supported: {', '.join(sorted(SCALES))}"
+        )
+    return scale
+
+
+def _parse_octave_bands(raw: dict[str, object]) -> BandSelectorConfig:
+    return BandSelectorConfig(
+        num_bands=int(raw["count"]),  # type: ignore[arg-type]
+        base_octave=int(raw["base_octave"]),  # type: ignore[arg-type]
+        hysteresis=float(raw["hysteresis"]),  # type: ignore[arg-type]
+    )
