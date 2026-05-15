@@ -23,6 +23,17 @@ camera_fps: 30
 pinch_threshold: 0.12  # trigger note ON when d falls below this
 pinch_release: 0.16    # trigger note OFF when d rises above this
 
+# --- Note assignments (Phase 2) ---
+# MIDI note number per finger when that finger pinches the thumb.
+# Defaults form a C major 7 chord (C E G B) which sounds musical out of the box.
+# Phase 3 replaces these with scale-degree mappings.
+# Reference: middle C = 60. Each octave is +12.
+finger_notes:
+  index: 60   # C4 (middle C)
+  middle: 64  # E4
+  ring: 67    # G4
+  pinky: 71   # B4
+
 # --- Musical state (Phase 3+) ---
 key: C
 scale: major

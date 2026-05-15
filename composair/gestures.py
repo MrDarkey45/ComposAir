@@ -17,6 +17,34 @@ WRIST = 0
 MIDDLE_FINGER_MCP = 9
 THUMB_TIP = 4
 INDEX_TIP = 8
+MIDDLE_TIP = 12
+RING_TIP = 16
+PINKY_TIP = 20
+
+
+class Finger(Enum):
+    """The four fingers that can pair with the thumb to form a pinch."""
+
+    INDEX = "index"
+    MIDDLE = "middle"
+    RING = "ring"
+    PINKY = "pinky"
+
+    @property
+    def tip_index(self) -> int:
+        """The MediaPipe landmark index of this finger's tip."""
+        return _FINGER_TIP_INDEX[self]
+
+
+_FINGER_TIP_INDEX: dict[Finger, int] = {
+    Finger.INDEX: INDEX_TIP,
+    Finger.MIDDLE: MIDDLE_TIP,
+    Finger.RING: RING_TIP,
+    Finger.PINKY: PINKY_TIP,
+}
+
+# Iteration order for any code that wants a stable per-finger sequence.
+ALL_FINGERS: tuple[Finger, ...] = (Finger.INDEX, Finger.MIDDLE, Finger.RING, Finger.PINKY)
 
 
 @dataclass(frozen=True)
@@ -49,16 +77,30 @@ def hand_size(landmarks: list[Point2D]) -> float:
 
 
 def thumb_index_distance(landmarks: list[Point2D]) -> float:
-    """Return raw (un-normalized) thumb-to-index-tip distance."""
-    return euclidean(landmarks[THUMB_TIP], landmarks[INDEX_TIP])
+    """Return raw (un-normalized) thumb-to-index-tip distance.
+
+    Kept for backwards compatibility with Phase 1 tests; prefer
+    thumb_to_finger_distance(landmarks, Finger.INDEX) in new code.
+    """
+    return thumb_to_finger_distance(landmarks, Finger.INDEX)
 
 
-def normalized_pinch_distance(landmarks: list[Point2D]) -> float:
-    """Return thumb-index distance scaled by hand size. Resolution-independent."""
+def thumb_to_finger_distance(landmarks: list[Point2D], finger: Finger) -> float:
+    """Return raw thumb-tip to chosen finger-tip distance."""
+    return euclidean(landmarks[THUMB_TIP], landmarks[finger.tip_index])
+
+
+def normalized_pinch_distance(
+    landmarks: list[Point2D], finger: Finger = Finger.INDEX
+) -> float:
+    """Return thumb-to-finger distance scaled by hand size.
+
+    Defaults to the index finger so Phase 1 call sites keep working.
+    """
     size = hand_size(landmarks)
     if size <= 1e-6:
         return float("inf")
-    return thumb_index_distance(landmarks) / size
+    return thumb_to_finger_distance(landmarks, finger) / size
 
 
 class PinchDetector:

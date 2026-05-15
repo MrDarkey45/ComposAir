@@ -15,6 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from composair.gestures import (
+    ALL_FINGERS,
+    Finger,
     INDEX_TIP,
     MIDDLE_FINGER_MCP,
     PinchDetector,
@@ -26,20 +28,31 @@ from composair.gestures import (
     hand_size,
     normalized_pinch_distance,
     thumb_index_distance,
+    thumb_to_finger_distance,
 )
 
 
-def _make_hand(thumb_index_dist: float, hand_size_dist: float = 0.2) -> list[Point2D]:
-    """Build a minimal 21-landmark hand with controllable thumb-index gap.
+def _make_hand(
+    thumb_index_dist: float,
+    hand_size_dist: float = 0.2,
+    finger_offsets: dict[Finger, float] | None = None,
+) -> list[Point2D]:
+    """Build a minimal 21-landmark hand with controllable per-finger gaps.
 
-    Only WRIST, MIDDLE_FINGER_MCP, THUMB_TIP, INDEX_TIP need real values
-    for the gesture math; the rest are filled with zeros for indexing safety.
+    Only WRIST, MIDDLE_FINGER_MCP, THUMB_TIP, and the four finger tips need
+    real values for the gesture math. By default all four fingertips sit at
+    the same x offset (thumb_index_dist) so legacy tests stay valid. Pass
+    finger_offsets to give each finger a different x offset, useful for
+    testing per-finger detection.
     """
     landmarks = [Point2D(0.0, 0.0)] * 21
     landmarks[WRIST] = Point2D(0.5, 0.9)
     landmarks[MIDDLE_FINGER_MCP] = Point2D(0.5, 0.9 - hand_size_dist)
     landmarks[THUMB_TIP] = Point2D(0.5, 0.5)
-    landmarks[INDEX_TIP] = Point2D(0.5 + thumb_index_dist, 0.5)
+    if finger_offsets is None:
+        finger_offsets = {f: thumb_index_dist for f in ALL_FINGERS}
+    for finger in ALL_FINGERS:
+        landmarks[finger.tip_index] = Point2D(0.5 + finger_offsets[finger], 0.5)
     return landmarks
 
 
@@ -95,6 +108,51 @@ def test_pinch_detector_rejects_inverted_thresholds() -> None:
     raise AssertionError("PinchDetector should reject on_threshold >= off_threshold")
 
 
+def test_finger_enum_tip_indices_are_correct() -> None:
+    # MediaPipe landmark layout: index 8, middle 12, ring 16, pinky 20.
+    assert Finger.INDEX.tip_index == 8
+    assert Finger.MIDDLE.tip_index == 12
+    assert Finger.RING.tip_index == 16
+    assert Finger.PINKY.tip_index == 20
+
+
+def test_per_finger_distance_isolates_correct_landmark() -> None:
+    # Middle finger touches the thumb (offset 0.0); others are 0.5 away.
+    hand = _make_hand(
+        thumb_index_dist=0.5,
+        finger_offsets={
+            Finger.INDEX: 0.5,
+            Finger.MIDDLE: 0.0,
+            Finger.RING: 0.5,
+            Finger.PINKY: 0.5,
+        },
+    )
+    assert math.isclose(thumb_to_finger_distance(hand, Finger.MIDDLE), 0.0, abs_tol=1e-9)
+    assert math.isclose(thumb_to_finger_distance(hand, Finger.INDEX), 0.5)
+    # Normalized middle-pinch should be 0; others should be 0.5/0.2 = 2.5.
+    assert math.isclose(normalized_pinch_distance(hand, Finger.MIDDLE), 0.0, abs_tol=1e-9)
+    assert math.isclose(normalized_pinch_distance(hand, Finger.RING), 2.5)
+
+
+def test_four_detectors_fire_independently() -> None:
+    """Pinching one finger must not affect the state of any other detector."""
+    detectors = {f: PinchDetector(0.05, 0.07) for f in ALL_FINGERS}
+
+    # Only middle finger pinches; the others are far away.
+    for finger in ALL_FINGERS:
+        d = 0.03 if finger is Finger.MIDDLE else 0.20
+        event = detectors[finger].update(d)
+        if finger is Finger.MIDDLE:
+            assert event is PinchEvent.PINCH_ON, f"{finger} should fire ON"
+        else:
+            assert event is None, f"{finger} should not fire (got {event})"
+
+    assert detectors[Finger.MIDDLE].is_pinched
+    for finger in ALL_FINGERS:
+        if finger is not Finger.MIDDLE:
+            assert not detectors[finger].is_pinched, f"{finger} wrongly pinched"
+
+
 def main() -> int:
     tests = [
         test_euclidean_basic,
@@ -104,6 +162,9 @@ def main() -> int:
         test_pinch_detector_emits_on_then_off,
         test_pinch_detector_hysteresis_prevents_flicker,
         test_pinch_detector_rejects_inverted_thresholds,
+        test_finger_enum_tip_indices_are_correct,
+        test_per_finger_distance_isolates_correct_landmark,
+        test_four_detectors_fire_independently,
     ]
     failures = 0
     for t in tests:

@@ -1,7 +1,8 @@
 """ComposAir entry point.
 
-Phase 1: webcam -> hand tracking -> pinch detection (thumb + index only)
--> play a fixed MIDI note (middle C). Press Q to quit.
+Phase 2: webcam -> hand tracking -> 4-way pinch detection (thumb to
+index/middle/ring/pinky) -> each finger plays its own fixed MIDI note.
+Press Q to quit.
 
 Run from the project root:
     python -m composair.main
@@ -16,14 +17,19 @@ import time
 import cv2
 
 from .config import load_config
-from .gestures import PinchDetector, PinchEvent, normalized_pinch_distance
+from .gestures import (
+    ALL_FINGERS,
+    Finger,
+    PinchDetector,
+    PinchEvent,
+    normalized_pinch_distance,
+)
 from .synth import Synth
 from .tracker import HandTracker
-from .ui import draw_fps, draw_hand, draw_help, draw_pinch_indicator
+from .ui import draw_fps, draw_hand, draw_help, draw_pinch_indicators
 
-# Phase 1 plays a single fixed note. Phase 3 makes this scale-driven.
-PHASE1_NOTE = 60       # middle C
-PHASE1_VELOCITY = 100
+# Velocity stays fixed until Phase 4 derives it from gesture speed.
+PHASE2_VELOCITY = 100
 WINDOW_TITLE = "ComposAir"
 
 logger = logging.getLogger(__name__)
@@ -54,8 +60,12 @@ def main() -> int:
                 int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
                 cap.get(cv2.CAP_PROP_FPS))
 
-    detector = PinchDetector(on_threshold=cfg.pinch_threshold,
-                             off_threshold=cfg.pinch_release)
+    # One detector per finger so they fire independently; same thresholds.
+    detectors: dict[Finger, PinchDetector] = {
+        finger: PinchDetector(on_threshold=cfg.pinch_threshold,
+                              off_threshold=cfg.pinch_release)
+        for finger in ALL_FINGERS
+    }
 
     with Synth(soundfont=cfg.soundfont, instrument=cfg.instrument,
                audio_driver=cfg.audio_driver, sample_rate=cfg.sample_rate) as synth, \
@@ -79,17 +89,24 @@ def main() -> int:
                 tracker.submit_frame(frame)
                 hands = tracker.latest_hands()
 
+                # Per-frame snapshot of distances and pinch state, used by the UI.
+                distances: dict[Finger, float] = {}
+                pinched: dict[Finger, bool] = {}
+
                 if hands:
                     landmarks = hands[0]
-                    distance = normalized_pinch_distance(landmarks)
-                    event = detector.update(distance)
-                    if event is PinchEvent.PINCH_ON:
-                        synth.note_on(PHASE1_NOTE, PHASE1_VELOCITY)
-                    elif event is PinchEvent.PINCH_OFF:
-                        synth.note_off(PHASE1_NOTE)
+                    for finger in ALL_FINGERS:
+                        d = normalized_pinch_distance(landmarks, finger)
+                        event = detectors[finger].update(d)
+                        if event is PinchEvent.PINCH_ON:
+                            synth.note_on(cfg.finger_notes[finger], PHASE2_VELOCITY)
+                        elif event is PinchEvent.PINCH_OFF:
+                            synth.note_off(cfg.finger_notes[finger])
+                        distances[finger] = d
+                        pinched[finger] = detectors[finger].is_pinched
 
                     draw_hand(frame, landmarks)
-                    draw_pinch_indicator(frame, landmarks, detector.is_pinched, distance)
+                    draw_pinch_indicators(frame, landmarks, pinched, distances)
 
                 # Rolling FPS over ~30 frames so the readout is not jittery.
                 frame_count += 1
@@ -106,8 +123,10 @@ def main() -> int:
                     logger.info("Quit requested")
                     break
         finally:
-            if detector.is_pinched:
-                synth.note_off(PHASE1_NOTE)
+            # Release every still-held note so the synth does not hang.
+            for finger, det in detectors.items():
+                if det.is_pinched:
+                    synth.note_off(cfg.finger_notes[finger])
             cap.release()
             cv2.destroyAllWindows()
 

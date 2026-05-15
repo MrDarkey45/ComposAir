@@ -9,7 +9,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from .gestures import INDEX_TIP, Point2D, THUMB_TIP
+from .gestures import ALL_FINGERS, Finger, Point2D, THUMB_TIP
 
 # MediaPipe hand landmark connections (pairs of indices to draw as bones).
 HAND_CONNECTIONS: tuple[tuple[int, int], ...] = (
@@ -36,22 +36,42 @@ def draw_hand(frame: np.ndarray, landmarks: list[Point2D]) -> None:
         cv2.circle(frame, _to_px(lm, w, h), radius=3, color=(0, 200, 255), thickness=-1)
 
 
-def draw_pinch_indicator(
+_PINCH_ACTIVE_COLOR = (0, 255, 0)        # green when finger is pinched
+_PINCH_INACTIVE_COLOR = (200, 200, 200)  # grey when finger is at rest
+
+
+def draw_pinch_indicators(
     frame: np.ndarray,
     landmarks: list[Point2D],
-    is_pinched: bool,
-    normalized_distance: float,
+    pinched: dict[Finger, bool],
+    distances: dict[Finger, float],
 ) -> None:
-    """Highlight the thumb-index segment and show the live distance value."""
+    """Draw one thumb-to-fingertip line per finger and a list of active fingers.
+
+    Each line is green while its finger is pinched, grey otherwise. The
+    bottom-left readout lists currently-active fingers and the distance
+    value of the closest finger to the thumb (handy for calibration).
+    """
     h, w = frame.shape[:2]
-    color = (0, 255, 0) if is_pinched else (200, 200, 200)
-    cv2.line(frame, _to_px(landmarks[THUMB_TIP], w, h),
-             _to_px(landmarks[INDEX_TIP], w, h), color=color, thickness=4)
-    cv2.putText(frame, f"d = {normalized_distance:.3f}",
-                (10, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    if is_pinched:
-        cv2.putText(frame, "PINCH", (10, h - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    thumb_px = _to_px(landmarks[THUMB_TIP], w, h)
+
+    for finger in ALL_FINGERS:
+        color = _PINCH_ACTIVE_COLOR if pinched.get(finger) else _PINCH_INACTIVE_COLOR
+        thickness = 4 if pinched.get(finger) else 2
+        cv2.line(frame, thumb_px, _to_px(landmarks[finger.tip_index], w, h),
+                 color=color, thickness=thickness)
+
+    # Show the smallest distance so users can calibrate against their tightest pinch.
+    if distances:
+        closest_finger = min(distances, key=lambda f: distances[f])
+        cv2.putText(frame,
+                    f"closest: {closest_finger.value} d = {distances[closest_finger]:.3f}",
+                    (10, h - 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+    active = [f.value.upper() for f in ALL_FINGERS if pinched.get(f)]
+    if active:
+        cv2.putText(frame, " ".join(active), (10, h - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, _PINCH_ACTIVE_COLOR, 2)
 
 
 def draw_fps(frame: np.ndarray, fps: float) -> None:

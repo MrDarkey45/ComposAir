@@ -83,6 +83,10 @@ We're building this in **phases**. Each phase produces a working, playable thing
 6. **Second-hand modulation** - detect both hands, classify left vs. right, map non-playing hand's Y to a CC. Recorded into the MIDI file as a CC track.
 7. **Key/scale/instrument switching** - keyboard hotkeys to change key (1-7), scale (single letters), and instrument ([/]). On-screen indicator.
 8. **Polish** - latency tuning, demo video/GIF for README, screenshots, architecture diagram, README portfolio pass.
+   - Known polish items captured during earlier phases:
+     - **3D landmarks**: switch from 2D `hand_landmarks` to 3D `world_landmarks` so finger occlusion (one finger crossing in front of another) does not collapse the thumb-to-fingertip distance and produce false triggers. Observed in Phase 2 testing.
+     - **Landmark smoothing**: add a one-Euro filter (or equivalent) in `tracker.py` to reduce per-frame jitter that becomes visible when fingertips overlap on screen.
+     - **Angle-independent pinch math**: today the normalization unit is `wrist -> middle-MCP` distance in screen space. When the hand tilts toward/away from the camera, that unit shortens and shifts the apparent pinch distance. Fixed by 3D landmarks + projecting into a hand-local plane.
 
 **Current phase: 1 (walking skeleton) - environment set up, no Phase 1 code yet.**
 
