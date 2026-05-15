@@ -38,6 +38,11 @@ soundfonts/
 models/
 *.task
 
+# Personal notes / scratch
+documents/STARTUP.txt
+documents/scratch/
+documents/*.local.*
+
 # SoundFont distribution archive (demo MIDIs, docs, support files)
 documents/GeneralUser_GS_*/
 
