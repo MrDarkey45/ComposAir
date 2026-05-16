@@ -1,9 +1,9 @@
 """ComposAir entry point.
 
-Phase 6: webcam -> two-hand tracking -> playing hand drives pinch
-detection / scale / octave / velocity, modulation hand drives a MIDI
-Control Change (default CC74 filter cutoff). R toggles MIDI recording,
-[ / ] cycle instruments, Q quits.
+Phase 7A: webcam -> two-hand tracking -> playing hand drives pinch /
+scale / octave / velocity, modulation hand drives a Control Change.
+Hotkeys: 1-7 select the key (C, D, E, F, G, A, B); M/n/h/d/P/p select
+the scale; [ ] cycle instruments; R toggles MIDI recording; Q quits.
 
 Run from the project root:
     python -m composair.main
@@ -29,6 +29,7 @@ from .gestures import (
     VelocityEstimator,
     normalized_pinch_distance,
 )
+from .hotkeys import ActionType, resolve as resolve_hotkey
 from .mapping import OctaveBandSelector, resolve_midi_note
 from .modulation import ModulationMapper
 from .recorder import MidiRecorder
@@ -92,6 +93,7 @@ def main() -> int:
         finger: VelocityEstimator(cfg.velocity) for finger in ALL_FINGERS
     }
     selector = OctaveBandSelector(cfg.octave_bands)
+    # spec is mutable: hotkeys replace it with a new frozen instance on key/scale change.
     spec = ScaleSpec(key=cfg.key, scale_name=cfg.scale)
     recorder = MidiRecorder(output_dir=RECORDINGS_DIR)
     modulator = ModulationMapper(cfg.modulation)
@@ -201,20 +203,24 @@ def main() -> int:
                 draw_help(frame)
 
                 cv2.imshow(WINDOW_TITLE, frame)
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord("q"):
+                action = resolve_hotkey(cv2.waitKey(1) & 0xFF)
+                if action.type is ActionType.QUIT:
                     logger.info("Quit requested")
                     break
-                elif key == ord("r"):
+                elif action.type is ActionType.RECORD_TOGGLE:
                     _toggle_recording(recorder, synth, time.perf_counter())
-                elif key == ord("["):
-                    new_program = synth.program - 1
-                    synth.change_instrument(new_program)
+                elif action.type is ActionType.INSTRUMENT_PREV:
+                    synth.change_instrument(synth.program - 1)
                     recorder.record_program_change(time.perf_counter(), synth.program)
-                elif key == ord("]"):
-                    new_program = synth.program + 1
-                    synth.change_instrument(new_program)
+                elif action.type is ActionType.INSTRUMENT_NEXT:
+                    synth.change_instrument(synth.program + 1)
                     recorder.record_program_change(time.perf_counter(), synth.program)
+                elif action.type is ActionType.SET_KEY:
+                    spec = ScaleSpec(key=action.payload, scale_name=spec.scale_name)
+                    logger.info("Key set to %s", spec.key)
+                elif action.type is ActionType.SET_SCALE:
+                    spec = ScaleSpec(key=spec.key, scale_name=action.payload)
+                    logger.info("Scale set to %s", spec.scale_name)
         finally:
             # Stop and save any active recording before tearing down.
             if recorder.is_recording:
