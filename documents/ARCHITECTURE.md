@@ -35,23 +35,28 @@ ComposAir has two goals:
 ComposAir/
 ├── composair/
 │   ├── __init__.py
-│   ├── main.py          # entry point, main loop
-│   ├── tracker.py       # MediaPipe wrapper, landmark extraction
-│   ├── gestures.py      # pinch detection, gesture-speed velocity
-│   ├── synth.py         # FluidSynth wrapper, note on/off, CC, program change
-│   ├── scales.py        # scale theory, key/scale data structures, transposition
-│   ├── mapping.py       # finger + octave band → MIDI note number
-│   ├── modulation.py    # second-hand → MIDI CC
-│   ├── recorder.py      # MIDI file recording (Phase 5)
-│   └── ui.py            # OpenCV overlay (landmarks, active fingers, key/scale display)
-├── tests/
-│   ├── test_camera.py   # smoke test: webcam works
-│   ├── test_synth.py    # smoke test: FluidSynth plays a note
-│   └── ...
-├── soundfonts/          # .sf2 files (gitignored - too big)
-├── documents/           # ComposAir architecture and design notes, README.md, timelines, planning docs
-├── config.example.yaml  # checked in, copied to config.yaml on first run
-├── config.yaml          # gitignored, user's actual config
+│   ├── main.py             # entry point, main loop, hotkey dispatch
+│   ├── camera.py           # cv2.VideoCapture wrapper with retry dialog
+│   ├── tracker.py          # MediaPipe HandLandmarker wrapper, TrackedHand
+│   ├── gestures.py         # Point2D/Point3D, PinchDetector, VelocityEstimator
+│   ├── synth.py            # FluidSynth wrapper: note_on/off, CC, program_change
+│   ├── scales.py           # key/scale theory, ScaleSpec, degree-to-MIDI
+│   ├── mapping.py          # OctaveBandSelector (hand Y to octave with hysteresis)
+│   ├── modulation.py       # ModulationMapper (Y to CC value, smoothing, deadzone)
+│   ├── recorder.py         # MidiRecorder (mido-backed MIDI file writer)
+│   ├── smoothing.py        # one-euro filter for landmark jitter (opt-in)
+│   ├── hotkeys.py          # ActionType, HotkeyAction, resolve(keycode)
+│   ├── settings_panel.py   # Tkinter live-tuning window
+│   ├── gm_instruments.py   # General MIDI program 0-127 name table
+│   ├── config.py           # Config dataclass + YAML loader with validation
+│   └── ui.py               # OpenCV overlay drawing helpers
+├── tests/                  # 69 unit tests across 6 modules
+├── models/                 # MediaPipe hand_landmarker.task (gitignored, ~8MB)
+├── soundfonts/             # GeneralUser-GS.sf2 (gitignored, ~30MB)
+├── recordings/             # MIDI output (gitignored)
+├── documents/              # ComposAir architecture and design notes, README.md, STARTUP.txt (local)
+├── config.example.yaml     # checked in template with documentation
+├── config.yaml             # gitignored, user's overrides
 └── requirements.txt
 ```
 
@@ -75,21 +80,26 @@ ComposAir/
 
 We're building this in **phases**. Each phase produces a working, playable thing. **Do not skip ahead** - finish a phase, confirm it works, then move on.
 
-1. **Walking skeleton** - webcam → MediaPipe → detect one pinch (thumb+index only) → play a fixed MIDI note. Goal: one sound from one pinch.
-2. **Multi-finger play** - all 4 pinches on one hand → 4 fixed notes, proper note-on/note-off lifecycle, visual overlay showing active finger.
-3. **Scale system + octave shift** - `scales.py` with major, minor, pentatonic (major + minor), dorian, harmonic minor. Hand Y → octave band. Fingers → scale degrees per `config.yaml`.
-4. **Velocity from gesture speed** - replace fixed velocity 100 with gesture-speed-derived velocity. Needs a short window of recent positions per fingertip.
-5. **MIDI file recording** - `recorder.py` captures note-on/note-off events with timestamps, writes a valid `.mid` file on stop. Toggle via `R` hotkey. **This is load-bearing for the user's DAW-paired workflow** - promoted ahead of second-hand modulation.
-6. **Second-hand modulation** - detect both hands, classify left vs. right, map non-playing hand's Y to a CC. Recorded into the MIDI file as a CC track.
-7. **Key/scale/instrument switching** - keyboard hotkeys to change key (1-7), scale (single letters), and instrument ([/]). On-screen indicator.
-8. **Polish** - latency tuning, demo video/GIF for README, screenshots, architecture diagram, README portfolio pass.
-   - Known polish items captured during earlier phases:
-     - **3D landmarks**: switch from 2D `hand_landmarks` to 3D `world_landmarks` so finger occlusion (one finger crossing in front of another) does not collapse the thumb-to-fingertip distance and produce false triggers. Observed in Phase 2 testing.
-     - **Landmark smoothing**: add a one-Euro filter (or equivalent) in `tracker.py` to reduce per-frame jitter that becomes visible when fingertips overlap on screen.
-     - **Angle-independent pinch math**: today the normalization unit is `wrist -> middle-MCP` distance in screen space. When the hand tilts toward/away from the camera, that unit shortens and shifts the apparent pinch distance. Fixed by 3D landmarks + projecting into a hand-local plane.
-     - **Pinch detection degrades when arm is raised**: noted in Phase 3 testing. As the hand moves to the top of the frame, fingers become harder to read reliably. Likely related to the same 2D landmark / occlusion issues; should improve with 3D landmarks + smoothing.
+1. **Walking skeleton** - DONE. Webcam to MediaPipe to thumb+index pinch to middle C.
+2. **Multi-finger play** - DONE. All 4 thumb-to-finger pinches on one hand fire 4 fixed notes with proper polyphony.
+3. **Scale system + octave shift** - DONE. `scales.py` with major, natural/harmonic minor, dorian, major/minor pentatonic. Hand Y maps to octave bands with hysteresis; fingers map to scale degrees per config.
+4. **Velocity from gesture speed** - DONE. Pinch closure rate drives MIDI velocity via per-finger ring buffer in VelocityEstimator.
+5. **MIDI file recording + instrument switching** - DONE. `recorder.py` captures note + program + CC events with timestamps. R toggles record, [ ] cycle instruments. Output is DAW-ready type-1 SMF.
+6. **Second-hand modulation** - DONE. Two-hand classification via MediaPipe handedness. Non-playing hand drives CC 7 (volume) by default; CC events captured into the .mid.
+7. **Key/scale/instrument switching + polish** - DONE in three sub-phases:
+   - **7A**: live key/scale hotkeys (1-7 for keys, M/n/h/d/P/p for scales). Pinch thresholds re-tuned from 0.12 to 0.18 based on dexterity feedback.
+   - **7B**: optional one-euro landmark smoothing (`smoothing.py`). Disabled by default - the cure was worse than the disease on a clean webcam.
+   - **7C**: opt-in 3D world-landmark pinch detection, Tkinter settings panel (S hotkey), per-finger 2D thresholds.
+8. **Portfolio prep + packaging** - in progress:
+   - **8A**: README portfolio pass, camera readiness dialog, internal docs sync, architecture diagram.
+   - **8B**: demo video / GIF / screenshots (user-captured on their own time).
+   - **8C**: PyInstaller .exe spike for end-user distribution.
 
-**Current phase: 1 (walking skeleton) - environment set up, no Phase 1 code yet.**
+**Polish items deferred (not blocking, worth a future pass):**
+- 3D landmarks have their own depth-ambiguity problem at extreme hand angles, so 2D is the default. Revisit when MediaPipe ships a better monocular depth model.
+- Smoothing is opt-in. Users with noisier cameras may benefit.
+
+**Current state:** Every functional phase shipped (1 through 7C). 69 unit tests passing. Phase 8 in progress.
 
 ## Code conventions
 

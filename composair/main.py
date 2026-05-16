@@ -19,6 +19,7 @@ from pathlib import Path
 
 import cv2
 
+from .camera import open_camera
 from .config import load_config
 from .gestures import (
     ALL_FINGERS,
@@ -73,18 +74,10 @@ def main() -> int:
     configure_logging()
     cfg = load_config()
 
-    cap = cv2.VideoCapture(cfg.camera_index, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        logger.error("Could not open camera %d", cfg.camera_index)
+    cap = open_camera(cfg.camera_index, cfg.camera_width, cfg.camera_height, cfg.camera_fps)
+    if cap is None:
+        logger.info("User cancelled camera setup; exiting")
         return 1
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.camera_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.camera_height)
-    cap.set(cv2.CAP_PROP_FPS, cfg.camera_fps)
-    logger.info("Camera opened: %dx%d @ %.1f FPS",
-                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                cap.get(cv2.CAP_PROP_FPS))
 
     # One detector + one velocity estimator per finger so they fire
     # independently. Live tunables are kept mutable so the settings panel
