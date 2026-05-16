@@ -28,12 +28,14 @@ from .gestures import (
     PinchEvent,
     VelocityEstimator,
     normalized_pinch_distance,
+    normalized_pinch_distance_3d,
 )
 from .hotkeys import ActionType, resolve as resolve_hotkey
 from .mapping import OctaveBandSelector, resolve_midi_note
 from .modulation import ModulationMapper
 from .recorder import MidiRecorder
 from .scales import ScaleSpec
+from .settings_panel import TunableSettings, open_settings_panel
 from .synth import Synth
 from .tracker import HandTracker, TrackedHand
 from .ui import (
@@ -53,6 +55,8 @@ from .ui import (
 WINDOW_TITLE = "ComposAir"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RECORDINGS_DIR = PROJECT_ROOT / "recordings"
+CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+CONFIG_EXAMPLE_PATH = PROJECT_ROOT / "config.example.yaml"
 
 logger = logging.getLogger(__name__)
 
@@ -83,12 +87,37 @@ def main() -> int:
                 cap.get(cv2.CAP_PROP_FPS))
 
     # One detector + one velocity estimator per finger so they fire
-    # independently; same thresholds and velocity config.
-    detectors: dict[Finger, PinchDetector] = {
-        finger: PinchDetector(on_threshold=cfg.pinch_threshold,
-                              off_threshold=cfg.pinch_release)
-        for finger in ALL_FINGERS
-    }
+    # independently. Live tunables are kept mutable so the settings panel
+    # can adjust them without restarting the loop.
+    tunables = TunableSettings(
+        pinch_thresholds_2d={f: cfg.pinch_thresholds_2d[f] for f in ALL_FINGERS},
+        use_3d_pinches=cfg.use_3d_pinches,
+        pinch_threshold_3d=cfg.pinch_threshold_3d,
+        pinch_release_3d=cfg.pinch_release_3d,
+        fast_closure_rate=cfg.velocity.fast_closure_rate,
+    )
+    if tunables.use_3d_pinches:
+        logger.info("Using 3D world-landmark pinch detection (on=%.3f, off=%.3f)",
+                    tunables.pinch_threshold_3d, tunables.pinch_release_3d)
+        detectors: dict[Finger, PinchDetector] = {
+            finger: PinchDetector(
+                on_threshold=tunables.pinch_threshold_3d,
+                off_threshold=tunables.pinch_release_3d,
+            )
+            for finger in ALL_FINGERS
+        }
+    else:
+        logger.info("Using 2D screen-landmark pinch detection (per-finger thresholds)")
+        for finger in ALL_FINGERS:
+            on, off = tunables.pinch_thresholds_2d[finger]
+            logger.info("  %s: on=%.3f off=%.3f", finger.value, on, off)
+        detectors = {
+            finger: PinchDetector(
+                on_threshold=tunables.pinch_thresholds_2d[finger][0],
+                off_threshold=tunables.pinch_thresholds_2d[finger][1],
+            )
+            for finger in ALL_FINGERS
+        }
     estimators: dict[Finger, VelocityEstimator] = {
         finger: VelocityEstimator(cfg.velocity) for finger in ALL_FINGERS
     }
@@ -140,14 +169,24 @@ def main() -> int:
 
                 if playing_hand is not None:
                     landmarks = playing_hand.landmarks
+                    world = playing_hand.world_landmarks
                     # Middle-finger MCP (knuckle) is the hand's natural center
                     # for octave-band tracking; using the wrist forced the user
-                    # to overreach to the top of the frame.
+                    # to overreach to the top of the frame. Octave bands are
+                    # intrinsically screen-space so we keep this 2D regardless
+                    # of the pinch-math path.
                     hand_y = landmarks[MIDDLE_FINGER_MCP].y
                     current_band = selector.update(hand_y)
 
+                    # Pinch math runs on 3D world coordinates when available
+                    # and the user has not opted out. 2D is the fallback.
+                    use_3d = tunables.use_3d_pinches and world is not None
+
                     for finger in ALL_FINGERS:
-                        d = normalized_pinch_distance(landmarks, finger)
+                        if use_3d:
+                            d = normalized_pinch_distance_3d(world, finger)
+                        else:
+                            d = normalized_pinch_distance(landmarks, finger)
                         estimators[finger].add_sample(now, d)
                         event = detectors[finger].update(d)
                         if event is PinchEvent.PINCH_ON:
@@ -221,6 +260,12 @@ def main() -> int:
                 elif action.type is ActionType.SET_SCALE:
                     spec = ScaleSpec(key=spec.key, scale_name=action.payload)
                     logger.info("Scale set to %s", spec.scale_name)
+                elif action.type is ActionType.OPEN_SETTINGS:
+                    new_tunables = open_settings_panel(
+                        tunables, CONFIG_PATH, CONFIG_EXAMPLE_PATH
+                    )
+                    if new_tunables is not None:
+                        _apply_tunables(new_tunables, tunables, detectors, estimators)
         finally:
             # Stop and save any active recording before tearing down.
             if recorder.is_recording:
@@ -242,6 +287,48 @@ def _toggle_recording(recorder: MidiRecorder, synth: Synth, now: float) -> None:
             logger.info("Recording saved to %s", path)
     else:
         recorder.start(now, synth.program)
+
+
+def _apply_tunables(
+    new: TunableSettings,
+    live: TunableSettings,
+    detectors: dict[Finger, PinchDetector],
+    estimators: dict[Finger, VelocityEstimator],
+) -> None:
+    """Push panel-edited settings into the running state.
+
+    Detectors keep their pinched/released state across the threshold
+    change so a held note does not jump off. Velocity estimators get
+    only the closure-rate update; their sample buffer is preserved.
+    """
+    live.pinch_thresholds_2d = dict(new.pinch_thresholds_2d)
+    live.use_3d_pinches = new.use_3d_pinches
+    live.pinch_threshold_3d = new.pinch_threshold_3d
+    live.pinch_release_3d = new.pinch_release_3d
+    live.fast_closure_rate = new.fast_closure_rate
+
+    if live.use_3d_pinches:
+        for det in detectors.values():
+            det.set_thresholds(live.pinch_threshold_3d, live.pinch_release_3d)
+        logger.info(
+            "Settings applied: pinch=3D on=%.3f off=%.3f, fast_closure_rate=%.2f",
+            live.pinch_threshold_3d, live.pinch_release_3d, live.fast_closure_rate,
+        )
+    else:
+        for finger, det in detectors.items():
+            on, off = live.pinch_thresholds_2d[finger]
+            det.set_thresholds(on, off)
+        per_finger = " ".join(
+            f"{f.value}={live.pinch_thresholds_2d[f][0]:.2f}/"
+            f"{live.pinch_thresholds_2d[f][1]:.2f}"
+            for f in ALL_FINGERS
+        )
+        logger.info(
+            "Settings applied: pinch=2D [%s], fast_closure_rate=%.2f",
+            per_finger, live.fast_closure_rate,
+        )
+    for est in estimators.values():
+        est.set_fast_closure_rate(live.fast_closure_rate)
 
 
 def _classify_hands(

@@ -22,15 +22,20 @@ from composair.gestures import (
     PinchDetector,
     PinchEvent,
     Point2D,
+    Point3D,
     THUMB_TIP,
     VelocityConfig,
     VelocityEstimator,
     WRIST,
     euclidean,
+    euclidean_3d,
     hand_size,
+    hand_size_3d,
     normalized_pinch_distance,
+    normalized_pinch_distance_3d,
     thumb_index_distance,
     thumb_to_finger_distance,
+    thumb_to_finger_distance_3d,
 )
 
 
@@ -215,6 +220,89 @@ def test_velocity_evicts_old_samples_outside_window() -> None:
     assert velocity == _DEFAULT_VEL_CFG.max_velocity
 
 
+def _make_hand_3d(
+    thumb_finger_dist_m: float = 0.03,
+    hand_size_m: float = 0.10,
+    finger_offsets_m: dict[Finger, float] | None = None,
+) -> list[Point3D]:
+    """Build a 21-landmark 3D hand in world coordinates (meters).
+
+    Approximate human hand: middle-MCP about 10 cm from wrist, thumb
+    tip and finger tips a few cm apart by default. Only the landmarks
+    used by the math (wrist, middle MCP, thumb tip, four finger tips)
+    are set; others default to origin.
+    """
+    landmarks = [Point3D(0.0, 0.0, 0.0)] * 21
+    landmarks[WRIST] = Point3D(0.0, -hand_size_m, 0.0)
+    landmarks[MIDDLE_FINGER_MCP] = Point3D(0.0, 0.0, 0.0)
+    landmarks[THUMB_TIP] = Point3D(-0.02, 0.05, 0.0)
+    if finger_offsets_m is None:
+        finger_offsets_m = {f: thumb_finger_dist_m for f in ALL_FINGERS}
+    for finger in ALL_FINGERS:
+        offset = finger_offsets_m[finger]
+        # Place each finger tip the requested distance from the thumb tip.
+        landmarks[finger.tip_index] = Point3D(-0.02 + offset, 0.05, 0.0)
+    return landmarks
+
+
+def test_euclidean_3d_basic() -> None:
+    assert euclidean_3d(Point3D(0, 0, 0), Point3D(3, 4, 0)) == 5.0
+    assert euclidean_3d(Point3D(0, 0, 0), Point3D(2, 3, 6)) == 7.0
+    assert euclidean_3d(Point3D(1, 1, 1), Point3D(1, 1, 1)) == 0.0
+
+
+def test_hand_size_3d() -> None:
+    hand = _make_hand_3d(hand_size_m=0.10)
+    assert math.isclose(hand_size_3d(hand), 0.10, abs_tol=1e-9)
+
+
+def test_thumb_to_finger_distance_3d_isolates_finger() -> None:
+    hand = _make_hand_3d(
+        finger_offsets_m={
+            Finger.INDEX: 0.05,
+            Finger.MIDDLE: 0.00,
+            Finger.RING: 0.05,
+            Finger.PINKY: 0.05,
+        },
+    )
+    # Middle tip is at the same position as thumb tip -> distance 0.
+    assert math.isclose(thumb_to_finger_distance_3d(hand, Finger.MIDDLE), 0.0, abs_tol=1e-9)
+    assert math.isclose(thumb_to_finger_distance_3d(hand, Finger.INDEX), 0.05, abs_tol=1e-9)
+
+
+def test_normalized_pinch_distance_3d_is_dimensionless() -> None:
+    # Same physical ratio (5 mm pinch on 10 cm hand) regardless of unit.
+    hand = _make_hand_3d(thumb_finger_dist_m=0.005, hand_size_m=0.10)
+    d = normalized_pinch_distance_3d(hand, Finger.INDEX)
+    assert math.isclose(d, 0.05, abs_tol=1e-6), f"expected ~0.05, got {d}"
+
+
+def test_normalized_pinch_distance_3d_handles_degenerate_hand() -> None:
+    # Zero-size hand from a failed detection: must not crash.
+    bad = [Point3D(0, 0, 0)] * 21
+    assert normalized_pinch_distance_3d(bad, Finger.INDEX) == float("inf")
+
+
+def test_3d_distance_is_view_invariant() -> None:
+    """Pure translation of the entire hand must not change pinch distance.
+
+    This is the property 2D normalization fails at: if the hand moves
+    closer to or further from the camera, 2D landmark coordinates
+    rescale but the *ratio* used as the normalized distance can drift
+    because perspective is non-linear. In 3D world coordinates the
+    relative distances are invariant to translation by construction.
+    """
+    hand_near = _make_hand_3d(thumb_finger_dist_m=0.02, hand_size_m=0.10)
+    # Move the entire hand by an arbitrary translation.
+    offset = Point3D(0.5, -0.3, 1.2)
+    hand_far = [
+        Point3D(lm.x + offset.x, lm.y + offset.y, lm.z + offset.z) for lm in hand_near
+    ]
+    d_near = normalized_pinch_distance_3d(hand_near, Finger.INDEX)
+    d_far = normalized_pinch_distance_3d(hand_far, Finger.INDEX)
+    assert math.isclose(d_near, d_far, abs_tol=1e-9)
+
+
 def test_velocity_rejects_bad_config() -> None:
     cases = [
         VelocityConfig(0, 120, 90, 150, 2.0),     # min < 1
@@ -250,6 +338,12 @@ def main() -> int:
         test_velocity_scales_linearly_in_between,
         test_velocity_evicts_old_samples_outside_window,
         test_velocity_rejects_bad_config,
+        test_euclidean_3d_basic,
+        test_hand_size_3d,
+        test_thumb_to_finger_distance_3d_isolates_finger,
+        test_normalized_pinch_distance_3d_is_dimensionless,
+        test_normalized_pinch_distance_3d_handles_degenerate_hand,
+        test_3d_distance_is_view_invariant,
     ]
     failures = 0
     for t in tests:

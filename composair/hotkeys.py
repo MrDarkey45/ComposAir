@@ -20,8 +20,8 @@ from enum import Enum, auto
 class ActionType(Enum):
     """Discriminator for HotkeyAction.
 
-    NOTE / SCALE actions carry a string payload; QUIT / RECORD_TOGGLE /
-    INSTRUMENT_PREV / INSTRUMENT_NEXT have no payload.
+    SET_KEY / SET_SCALE actions carry a string payload; QUIT / RECORD_TOGGLE /
+    INSTRUMENT_PREV / INSTRUMENT_NEXT / OPEN_SETTINGS have no payload.
     """
 
     NONE = auto()
@@ -31,6 +31,7 @@ class ActionType(Enum):
     INSTRUMENT_NEXT = auto()
     SET_KEY = auto()
     SET_SCALE = auto()
+    OPEN_SETTINGS = auto()
 
 
 @dataclass(frozen=True)
@@ -75,6 +76,8 @@ def resolve(key_code: int) -> HotkeyAction:
         return HotkeyAction(ActionType.QUIT)
     if key_code == ord("r"):
         return HotkeyAction(ActionType.RECORD_TOGGLE)
+    if key_code == ord("s"):
+        return HotkeyAction(ActionType.OPEN_SETTINGS)
     if key_code == ord("["):
         return HotkeyAction(ActionType.INSTRUMENT_PREV)
     if key_code == ord("]"):

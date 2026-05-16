@@ -56,6 +56,21 @@ class Point2D:
     y: float
 
 
+@dataclass(frozen=True)
+class Point3D:
+    """World-space landmark coordinate in meters, relative to hand center.
+
+    MediaPipe's world_landmarks output: each axis is the displacement
+    from the geometric center of the hand, in meters. This makes
+    inter-landmark distances correspond to real physical dimensions
+    regardless of how close the user holds their hand to the camera.
+    """
+
+    x: float
+    y: float
+    z: float
+
+
 class PinchEvent(Enum):
     """Edge-triggered pinch transitions."""
 
@@ -66,6 +81,38 @@ class PinchEvent(Enum):
 def euclidean(a: Point2D, b: Point2D) -> float:
     """Return the 2D distance between two normalized landmarks."""
     return math.hypot(a.x - b.x, a.y - b.y)
+
+
+def euclidean_3d(a: Point3D, b: Point3D) -> float:
+    """Return the 3D distance between two world-space landmarks (meters)."""
+    return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
+
+
+def hand_size_3d(landmarks: list[Point3D]) -> float:
+    """Return wrist-to-middle-MCP distance in meters. Used as a per-hand size unit."""
+    return euclidean_3d(landmarks[WRIST], landmarks[MIDDLE_FINGER_MCP])
+
+
+def thumb_to_finger_distance_3d(landmarks: list[Point3D], finger: Finger) -> float:
+    """Return raw 3D thumb-tip to chosen finger-tip distance, in meters."""
+    return euclidean_3d(landmarks[THUMB_TIP], landmarks[finger.tip_index])
+
+
+def normalized_pinch_distance_3d(
+    landmarks: list[Point3D], finger: Finger = Finger.INDEX
+) -> float:
+    """Return 3D thumb-to-finger distance scaled by 3D hand size.
+
+    Like the 2D version this is dimensionless (meters / meters), so the
+    threshold is independent of hand size. Unlike the 2D version it does
+    not collapse to a smaller value when one finger passes in front of
+    another from the camera's perspective, because the real distance in
+    space does not change with viewing angle.
+    """
+    size = hand_size_3d(landmarks)
+    if size <= 1e-6:
+        return float("inf")
+    return thumb_to_finger_distance_3d(landmarks, finger) / size
 
 
 def hand_size(landmarks: list[Point2D]) -> float:
@@ -123,6 +170,21 @@ class PinchDetector:
     @property
     def is_pinched(self) -> bool:
         return self._pinched
+
+    def set_thresholds(self, on_threshold: float, off_threshold: float) -> None:
+        """Update thresholds mid-run without losing the pinched/released state.
+
+        Used by the settings panel for live retuning. The detector state
+        machine keeps running uninterrupted; only the bounds shift, so a
+        currently-held note does not get yanked off when you slide a
+        threshold across it.
+        """
+        if on_threshold >= off_threshold:
+            raise ValueError(
+                f"on_threshold ({on_threshold}) must be less than off_threshold ({off_threshold})"
+            )
+        self._on = on_threshold
+        self._off = off_threshold
 
     def update(self, normalized_distance: float) -> PinchEvent | None:
         """Feed the current normalized distance. Returns an event on transition, else None."""
@@ -213,3 +275,17 @@ class VelocityEstimator:
     def clear(self) -> None:
         """Drop all samples. Used on shutdown or after a long tracking gap."""
         self._samples.clear()
+
+    def set_fast_closure_rate(self, rate: float) -> None:
+        """Update only the fast_closure_rate at runtime. Other config is preserved."""
+        if rate <= 0:
+            raise ValueError(f"fast_closure_rate must be > 0, got {rate}")
+        # _cfg is a frozen dataclass; rebuild it with the new rate.
+        cfg = self._cfg
+        self._cfg = VelocityConfig(
+            min_velocity=cfg.min_velocity,
+            max_velocity=cfg.max_velocity,
+            default=cfg.default,
+            window_ms=cfg.window_ms,
+            fast_closure_rate=rate,
+        )

@@ -45,9 +45,15 @@ class Config:
     camera_height: int
     camera_fps: int
 
-    # Gesture detection
-    pinch_threshold: float
-    pinch_release: float
+    # 2D pinch thresholds per finger: {Finger: (on, off)}.
+    # MediaPipe accuracy is not uniform across the hand; per-finger tuning
+    # is the right level of granularity for live retuning.
+    pinch_thresholds_2d: dict[Finger, tuple[float, float]]
+
+    # 3D pinch detection (world-space landmarks; preferred for occlusion-robustness)
+    use_3d_pinches: bool
+    pinch_threshold_3d: float
+    pinch_release_3d: float
 
     # Musical state
     key: str
@@ -105,8 +111,10 @@ def load_config() -> Config:
         camera_width=int(data["camera_width"]),
         camera_height=int(data["camera_height"]),
         camera_fps=int(data["camera_fps"]),
-        pinch_threshold=float(data["pinch_threshold"]),
-        pinch_release=float(data["pinch_release"]),
+        pinch_thresholds_2d=_parse_pinch_thresholds_2d(data),
+        use_3d_pinches=bool(data.get("use_3d_pinches", True)),
+        pinch_threshold_3d=float(data.get("pinch_threshold_3d", 0.50)),
+        pinch_release_3d=float(data.get("pinch_release_3d", 0.65)),
         key=key,
         scale=scale,
         finger_degrees=finger_degrees,
@@ -117,6 +125,42 @@ def load_config() -> Config:
         dominant_hand=dominant_hand,
         smoothing=smoothing,
     )
+
+
+def _parse_pinch_thresholds_2d(
+    data: dict[str, object],
+) -> dict[Finger, tuple[float, float]]:
+    """Read 2D pinch thresholds with backwards compatibility.
+
+    Prefers the per-finger pinch_thresholds map. Falls back to the older
+    universal pinch_threshold / pinch_release pair if the map is missing,
+    so configs saved by Phase 7A or 7B still load.
+    """
+    per_finger = data.get("pinch_thresholds")
+    if isinstance(per_finger, dict):
+        out: dict[Finger, tuple[float, float]] = {}
+        for finger in Finger:
+            entry = per_finger.get(finger.value)
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"pinch_thresholds missing finger '{finger.value}' "
+                    f"or value is not a mapping"
+                )
+            on = float(entry["on"])
+            off = float(entry["off"])
+            if on >= off:
+                raise ValueError(
+                    f"pinch_thresholds['{finger.value}']: on ({on}) must be < off ({off})"
+                )
+            out[finger] = (on, off)
+        return out
+
+    # Legacy: single pair applied to all four fingers.
+    on = float(data.get("pinch_threshold", 0.18))
+    off = float(data.get("pinch_release", 0.23))
+    if on >= off:
+        raise ValueError(f"pinch_threshold ({on}) must be < pinch_release ({off})")
+    return {finger: (on, off) for finger in Finger}
 
 
 def _parse_finger_degrees(raw: dict[str, object]) -> dict[Finger, int]:

@@ -19,7 +19,7 @@ from threading import Lock
 import mediapipe as mp
 import numpy as np
 
-from .gestures import Point2D
+from .gestures import Point2D, Point3D
 from .smoothing import HandLandmarkSmoother, SmoothingConfig
 
 logger = logging.getLogger(__name__)
@@ -29,16 +29,25 @@ MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "hand_landmarke
 
 @dataclass(frozen=True)
 class TrackedHand:
-    """A single detected hand: 21 landmarks plus a handedness label.
+    """A single detected hand: 21 landmarks (2D + 3D) plus a handedness label.
 
-    Handedness is the label MediaPipe reports for this hand: "Left" or
-    "Right". Note that MediaPipe labels from the user's anatomical
+    landmarks: 2D normalized (0-1) screen coordinates. Use for UI
+        rendering and for any logic that needs to know where the hand
+        is ON SCREEN (e.g. wrist Y for the octave band selector).
+    world_landmarks: 3D meters relative to the hand center. Use for
+        pinch math and any inter-landmark distance that should be
+        view-angle and depth independent. May be None if the model
+        did not produce world coordinates for this frame.
+
+    Handedness is the label MediaPipe reports for this hand ("Left"
+    or "Right"). Note that MediaPipe labels from the user's anatomical
     perspective on the original (un-mirrored) image. Callers that flip
     the frame for display should invert this label, or do that flip
     upstream before submitting frames.
     """
 
     landmarks: list[Point2D]
+    world_landmarks: list[Point3D] | None
     handedness: str  # "Left" or "Right"
     handedness_score: float  # confidence 0-1
 
@@ -87,12 +96,16 @@ class HandTracker:
                     num_hands, "on" if self._smoothing_cfg.enabled else "off")
 
     def _on_result(self, result, output_image, timestamp_ms: int) -> None:
-        # MediaPipe parallel arrays: result.hand_landmarks[i] and
-        # result.handedness[i] correspond to the same detected hand.
+        # MediaPipe parallel arrays: result.hand_landmarks[i] (2D normalized
+        # screen), result.hand_world_landmarks[i] (3D meters relative to hand
+        # center), and result.handedness[i] all correspond to the same hand.
         timestamp_s = timestamp_ms / 1000.0
         hands: list[TrackedHand] = []
         seen: set[str] = set()
-        for hand_landmarks, handedness in zip(result.hand_landmarks, result.handedness):
+        world_arrays = getattr(result, "hand_world_landmarks", None) or []
+        for idx, (hand_landmarks, handedness) in enumerate(
+            zip(result.hand_landmarks, result.handedness)
+        ):
             # handedness is a list of Category objects; the top one is the
             # model's best label for this hand.
             top = handedness[0] if handedness else None
@@ -107,8 +120,13 @@ class HandTracker:
             smoothed = smoother.filter(raw, timestamp_s)
             seen.add(label)
 
+            world: list[Point3D] | None = None
+            if idx < len(world_arrays):
+                world = [Point3D(lm.x, lm.y, lm.z) for lm in world_arrays[idx]]
+
             hands.append(TrackedHand(
                 landmarks=smoothed,
+                world_landmarks=world,
                 handedness=label,
                 handedness_score=score,
             ))

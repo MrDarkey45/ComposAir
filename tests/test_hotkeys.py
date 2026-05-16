@@ -33,6 +33,10 @@ def test_brackets_resolve_to_instrument_prev_next() -> None:
     assert resolve(ord("]")).type is ActionType.INSTRUMENT_NEXT
 
 
+def test_s_resolves_to_open_settings() -> None:
+    assert resolve(ord("s")).type is ActionType.OPEN_SETTINGS
+
+
 def test_digits_1_to_7_map_to_keys_c_through_b() -> None:
     expected = {"1": "C", "2": "D", "3": "E", "4": "F", "5": "G", "6": "A", "7": "B"}
     for digit, key_name in expected.items():
@@ -99,6 +103,7 @@ def main() -> int:
         test_q_resolves_to_quit,
         test_r_resolves_to_record_toggle,
         test_brackets_resolve_to_instrument_prev_next,
+        test_s_resolves_to_open_settings,
         test_digits_1_to_7_map_to_keys_c_through_b,
         test_all_key_hotkey_payloads_are_real_keys,
         test_scale_letter_keys,

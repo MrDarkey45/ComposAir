@@ -89,7 +89,7 @@ def draw_help(frame: np.ndarray) -> None:
     of the UI on a 1280 wide frame.
     """
     h, w = frame.shape[:2]
-    line1 = "Q quit | R record | [ ] instrument"
+    line1 = "Q quit | R record | S settings | [ ] instrument"
     line2 = "1-7 key | M maj  n min  h harm  d dor  P pent+  p pent-"
     cv2.putText(frame, line1, (w - 360, h - 44),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 180, 180), 2)

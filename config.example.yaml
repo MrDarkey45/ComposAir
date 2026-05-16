@@ -20,8 +20,26 @@ camera_fps: 30
 # Lower pinch_threshold = need to bring fingers closer to trigger (harder).
 # pinch_release should be 30-50% higher than pinch_threshold so the note does
 # not flicker when you hold a near-pinch.
-pinch_threshold: 0.18  # trigger note ON when d falls below this
-pinch_release: 0.23    # trigger note OFF when d rises above this
+# Per-finger 2D pinch thresholds. Each finger has its own trigger (on)
+# and release (off) value because MediaPipe's landmark accuracy is not
+# uniform across the hand: middle and ring fingers tend to need
+# slightly higher trigger values than index and pinky on the same
+# physical pinch. Tune per your hand and your camera with the in-app
+# settings panel (press S while playing).
+pinch_thresholds:
+  index:  {on: 0.18, off: 0.23}
+  middle: {on: 0.18, off: 0.23}
+  ring:   {on: 0.18, off: 0.23}
+  pinky:  {on: 0.18, off: 0.23}
+
+# 3D pinch detection uses world-space (meters relative to hand center)
+# landmarks instead of 2D screen coordinates. View-angle independent
+# and resistant to finger-occlusion false triggers, but currently
+# weaker on hand-rotation depth ambiguity. Disabled by default; flip
+# to true and tune the thresholds below to try it.
+use_3d_pinches: false
+pinch_threshold_3d: 0.55
+pinch_release_3d: 0.70
 
 # --- Musical state (Phase 3) ---
 # Key letter and scale name. Supported keys: C, C#, D, D#, E, F, F#, G,
