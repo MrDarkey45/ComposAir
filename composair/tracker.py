@@ -24,7 +24,9 @@ from .smoothing import HandLandmarkSmoother, SmoothingConfig
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "hand_landmarker.task"
+from .paths import resource_root
+
+MODEL_PATH = resource_root() / "models" / "hand_landmarker.task"
 
 
 @dataclass(frozen=True)

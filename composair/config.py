@@ -24,7 +24,9 @@ _DOMINANT_HAND_OPTIONS = ("right", "left")
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from .paths import resource_root
+
+PROJECT_ROOT = resource_root()
 CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 CONFIG_EXAMPLE_PATH = PROJECT_ROOT / "config.example.yaml"
 
@@ -146,11 +148,26 @@ def _parse_pinch_thresholds_2d(
                     f"pinch_thresholds missing finger '{finger.value}' "
                     f"or value is not a mapping"
                 )
-            on = float(entry["on"])
-            off = float(entry["off"])
+            # Accept both new (trigger/release) and legacy (on/off, where
+            # YAML 1.1 turns the keys into booleans True/False). The
+            # canonical schema is trigger/release.
+            trigger = entry.get("trigger")
+            release = entry.get("release")
+            if trigger is None and True in entry:
+                trigger = entry[True]
+            if release is None and False in entry:
+                release = entry[False]
+            if trigger is None or release is None:
+                raise ValueError(
+                    f"pinch_thresholds['{finger.value}']: "
+                    f"missing 'trigger' or 'release' key"
+                )
+            on = float(trigger)
+            off = float(release)
             if on >= off:
                 raise ValueError(
-                    f"pinch_thresholds['{finger.value}']: on ({on}) must be < off ({off})"
+                    f"pinch_thresholds['{finger.value}']: "
+                    f"trigger ({on}) must be < release ({off})"
                 )
             out[finger] = (on, off)
         return out

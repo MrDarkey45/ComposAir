@@ -74,3 +74,8 @@ htmlcov/
 recordings/
 *.mid
 *.midi
+
+# PyInstaller build artifacts
+build/
+dist/
+*.manifest

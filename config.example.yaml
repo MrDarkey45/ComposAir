@@ -26,11 +26,13 @@ camera_fps: 30
 # slightly higher trigger values than index and pinky on the same
 # physical pinch. Tune per your hand and your camera with the in-app
 # settings panel (press S while playing).
+# Note: keys are 'trigger' and 'release' rather than 'on' and 'off'
+# because YAML 1.1 coerces unquoted 'on' / 'off' to boolean values.
 pinch_thresholds:
-  index:  {on: 0.18, off: 0.23}
-  middle: {on: 0.18, off: 0.23}
-  ring:   {on: 0.18, off: 0.23}
-  pinky:  {on: 0.18, off: 0.23}
+  index:  {trigger: 0.18, release: 0.23}
+  middle: {trigger: 0.18, release: 0.23}
+  ring:   {trigger: 0.18, release: 0.23}
+  pinky:  {trigger: 0.18, release: 0.23}
 
 # 3D pinch detection uses world-space (meters relative to hand center)
 # landmarks instead of 2D screen coordinates. View-angle independent

@@ -292,7 +292,7 @@ def _save_to_yaml(
     data.pop("pinch_threshold", None)
     data.pop("pinch_release", None)
     data["pinch_thresholds"] = {
-        f.value: {"on": float(on), "off": float(off)}
+        f.value: {"trigger": float(on), "release": float(off)}
         for f, (on, off) in edited.pinch_thresholds_2d.items()
     }
     data["use_3d_pinches"] = bool(edited.use_3d_pinches)

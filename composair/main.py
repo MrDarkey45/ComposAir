@@ -21,6 +21,7 @@ import cv2
 
 from .camera import open_camera
 from .config import load_config
+from .paths import resource_root
 from .gestures import (
     ALL_FINGERS,
     Finger,
@@ -54,9 +55,16 @@ from .ui import (
 )
 
 WINDOW_TITLE = "ComposAir"
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RECORDINGS_DIR = PROJECT_ROOT / "recordings"
-CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+PROJECT_ROOT = resource_root()
+# Recordings should sit next to the exe / user-visible files, not buried
+# inside the read-only bundle. In dev that is the project root; for the
+# frozen exe it is the directory containing the exe.
+if getattr(sys, "frozen", False):
+    RECORDINGS_DIR = Path(sys.executable).resolve().parent / "recordings"
+    CONFIG_PATH = Path(sys.executable).resolve().parent / "config.yaml"
+else:
+    RECORDINGS_DIR = PROJECT_ROOT / "recordings"
+    CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 CONFIG_EXAMPLE_PATH = PROJECT_ROOT / "config.example.yaml"
 
 logger = logging.getLogger(__name__)
