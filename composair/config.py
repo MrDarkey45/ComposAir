@@ -14,7 +14,12 @@ import yaml
 
 from .gestures import Finger, VelocityConfig
 from .mapping import BandSelectorConfig
+from .modulation import ModulationConfig
 from .scales import KEY_OFFSETS, SCALES
+
+# Accepted values for the playing_hand setting.
+_PLAYING_HAND_OPTIONS = ("auto", "right", "left")
+_DOMINANT_HAND_OPTIONS = ("right", "left")
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +61,11 @@ class Config:
     # Gesture-speed -> MIDI velocity mapping
     velocity: VelocityConfig
 
+    # Second-hand modulation
+    modulation: ModulationConfig
+    playing_hand: str        # auto, right, or left
+    dominant_hand: str       # right or left
+
 
 def load_config() -> Config:
     """Read config.yaml (or config.example.yaml as fallback) and return a Config."""
@@ -79,6 +89,7 @@ def load_config() -> Config:
     scale = _validate_scale(str(data["scale"]))
     octave_bands = _parse_octave_bands(data["octave_bands"])
     velocity = _parse_velocity(data["velocity"])
+    modulation, playing_hand, dominant_hand = _parse_modulation(data["modulation"])
 
     return Config(
         soundfont=soundfont_path,
@@ -96,6 +107,9 @@ def load_config() -> Config:
         finger_degrees=finger_degrees,
         octave_bands=octave_bands,
         velocity=velocity,
+        modulation=modulation,
+        playing_hand=playing_hand,
+        dominant_hand=dominant_hand,
     )
 
 
@@ -149,3 +163,26 @@ def _parse_velocity(raw: dict[str, object]) -> VelocityConfig:
         window_ms=float(raw["window_ms"]),  # type: ignore[arg-type]
         fast_closure_rate=float(raw["fast_closure_rate"]),  # type: ignore[arg-type]
     )
+
+
+def _parse_modulation(raw: dict[str, object]) -> tuple[ModulationConfig, str, str]:
+    """Return (ModulationConfig, playing_hand, dominant_hand)."""
+    playing_hand = str(raw["playing_hand"]).lower()
+    if playing_hand not in _PLAYING_HAND_OPTIONS:
+        raise ValueError(
+            f"modulation.playing_hand must be one of "
+            f"{_PLAYING_HAND_OPTIONS}, got '{playing_hand}'"
+        )
+    dominant_hand = str(raw["dominant_hand"]).lower()
+    if dominant_hand not in _DOMINANT_HAND_OPTIONS:
+        raise ValueError(
+            f"modulation.dominant_hand must be one of "
+            f"{_DOMINANT_HAND_OPTIONS}, got '{dominant_hand}'"
+        )
+    cfg = ModulationConfig(
+        cc_number=int(raw["cc_number"]),  # type: ignore[arg-type]
+        smoothing=float(raw["smoothing"]),  # type: ignore[arg-type]
+        deadzone=int(raw["deadzone"]),  # type: ignore[arg-type]
+        update_interval_ms=float(raw["update_interval_ms"]),  # type: ignore[arg-type]
+    )
+    return cfg, playing_hand, dominant_hand

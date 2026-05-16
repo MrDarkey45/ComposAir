@@ -62,6 +62,16 @@ class Synth:
         self._program = program
         logger.info("Switched to instrument %d", program)
 
+    def control_change(self, cc_number: int, value: int) -> None:
+        """Send a MIDI Control Change message on the default channel.
+
+        CC numbers 0-127 cover all MIDI controllers; CC 74 = filter
+        cutoff, CC 7 = channel volume, CC 1 = modulation wheel, etc.
+        Values are clamped to 0-127.
+        """
+        value = max(0, min(127, value))
+        self._fs.cc(DEFAULT_CHANNEL, cc_number, value)
+
     def note_on(self, midi_note: int, velocity: int = 100) -> None:
         """Trigger a MIDI note. Velocity 1-127."""
         self._fs.noteon(DEFAULT_CHANNEL, midi_note, velocity)
@@ -78,5 +88,6 @@ class Synth:
     def __enter__(self) -> "Synth":
         return self
 
-    def __exit__(self, *exc: object) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # noqa: ARG002
+        del exc_type, exc_val, exc_tb
         self.close()

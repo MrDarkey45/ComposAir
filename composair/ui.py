@@ -89,6 +89,51 @@ def draw_help(frame: np.ndarray) -> None:
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 180, 180), 2)
 
 
+def draw_modulation_hand(frame: np.ndarray, landmarks: list[Point2D]) -> None:
+    """Draw the modulation hand in a distinct color so the user can tell
+    it apart from the playing hand.
+    """
+    h, w = frame.shape[:2]
+    color = (255, 180, 0)  # cyan-ish for "this hand is doing something different"
+    for a, b in HAND_CONNECTIONS:
+        ax = int(landmarks[a].x * w)
+        ay = int(landmarks[a].y * h)
+        bx = int(landmarks[b].x * w)
+        by = int(landmarks[b].y * h)
+        cv2.line(frame, (ax, ay), (bx, by), color=color, thickness=2)
+    for lm in landmarks:
+        cv2.circle(frame, (int(lm.x * w), int(lm.y * h)),
+                   radius=3, color=color, thickness=-1)
+
+
+def draw_cc_bar(frame: np.ndarray, cc_number: int, last_value: int | None) -> None:
+    """Vertical bar on the right edge: filled proportional to last CC value.
+
+    Shows nothing while value is None (modulation hand absent / no value
+    emitted yet). The number label sits above the bar.
+    """
+    if last_value is None:
+        return
+    h, w = frame.shape[:2]
+    bar_x = w - 30
+    bar_top = 200
+    bar_bottom = h - 80
+    bar_height = bar_bottom - bar_top
+    # Outline.
+    cv2.rectangle(frame, (bar_x, bar_top), (bar_x + 16, bar_bottom),
+                  color=(120, 120, 120), thickness=1)
+    # Fill from the bottom up proportional to last_value / 127.
+    fill_h = int(bar_height * (last_value / 127.0))
+    fill_top = bar_bottom - fill_h
+    cv2.rectangle(frame, (bar_x + 1, fill_top), (bar_x + 15, bar_bottom - 1),
+                  color=(255, 180, 0), thickness=-1)
+    # Label.
+    cv2.putText(frame, f"CC{cc_number}", (bar_x - 35, bar_top - 8),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+    cv2.putText(frame, str(last_value), (bar_x - 35, bar_top + 14),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 180, 0), 2)
+
+
 def draw_octave_bands(
     frame: np.ndarray,
     boundaries: tuple[float, ...],

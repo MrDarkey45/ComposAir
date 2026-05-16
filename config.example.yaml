@@ -41,6 +41,36 @@ finger_degrees:
   ring: 5    # fifth
   pinky: 7   # seventh
 
+# --- Second-hand modulation (Phase 6) ---
+# When both hands are visible, one plays notes and the other modulates
+# a continuous controller (default CC74 = filter cutoff). Raising the
+# non-playing hand opens the filter (brighter); lowering closes it.
+#
+# playing_hand:
+#   auto  - use MediaPipe handedness detection (recommended)
+#   right - your right hand always plays, other hand modulates
+#   left  - your left hand always plays, other hand modulates
+# dominant_hand: used as fallback when auto detection is ambiguous,
+#   and also when only one hand is visible (it is assumed to be this).
+# cc_number: MIDI controller index.
+#   7  - channel volume (recommended; works on any instrument)
+#   11 - expression (like volume but for in-phrase swells)
+#   1  - modulation wheel (vibrato on sustained instruments)
+#   10 - pan (left/right stereo position; very obvious in headphones)
+#   74 - filter cutoff (only audible on synth pads/leads)
+# smoothing: 0 = no smoothing, ~0.5 = strong. Higher = less responsive
+#   but less jittery.
+# deadzone: minimum CC delta (0-127) to actually emit. Reduces MIDI
+#   traffic from tiny hand movements.
+# update_interval_ms: throttle CC sends to roughly this rate.
+modulation:
+  playing_hand: auto
+  dominant_hand: right
+  cc_number: 7
+  smoothing: 0.4
+  deadzone: 2
+  update_interval_ms: 30
+
 # --- Velocity from gesture speed (Phase 4) ---
 # Maps how fast you close the pinch to MIDI velocity (loudness).
 # A slow, gentle pinch plays softly; a fast, decisive pinch plays loudly.

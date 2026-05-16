@@ -90,6 +90,16 @@ class MidiRecorder:
             mido.Message("program_change", channel=_CHANNEL, program=program),
         ))
 
+    def record_control_change(self, now: float, cc_number: int, value: int) -> None:
+        """Append a CC event so modulation gestures survive the round trip to DAW."""
+        if not self._recording or self._start_time is None:
+            return
+        t = now - self._start_time
+        self._events.append((
+            t,
+            mido.Message("control_change", channel=_CHANNEL, control=cc_number, value=value),
+        ))
+
     def stop(self) -> Path | None:
         """Stop recording and write the MIDI file.
 
