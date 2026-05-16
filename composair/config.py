@@ -16,6 +16,7 @@ from .gestures import Finger, VelocityConfig
 from .mapping import BandSelectorConfig
 from .modulation import ModulationConfig
 from .scales import KEY_OFFSETS, SCALES
+from .smoothing import SmoothingConfig
 
 # Accepted values for the playing_hand setting.
 _PLAYING_HAND_OPTIONS = ("auto", "right", "left")
@@ -66,6 +67,9 @@ class Config:
     playing_hand: str        # auto, right, or left
     dominant_hand: str       # right or left
 
+    # Landmark smoothing
+    smoothing: SmoothingConfig
+
 
 def load_config() -> Config:
     """Read config.yaml (or config.example.yaml as fallback) and return a Config."""
@@ -90,6 +94,7 @@ def load_config() -> Config:
     octave_bands = _parse_octave_bands(data["octave_bands"])
     velocity = _parse_velocity(data["velocity"])
     modulation, playing_hand, dominant_hand = _parse_modulation(data["modulation"])
+    smoothing = _parse_smoothing(data["smoothing"])
 
     return Config(
         soundfont=soundfont_path,
@@ -110,6 +115,7 @@ def load_config() -> Config:
         modulation=modulation,
         playing_hand=playing_hand,
         dominant_hand=dominant_hand,
+        smoothing=smoothing,
     )
 
 
@@ -162,6 +168,15 @@ def _parse_velocity(raw: dict[str, object]) -> VelocityConfig:
         default=int(raw["default"]),  # type: ignore[arg-type]
         window_ms=float(raw["window_ms"]),  # type: ignore[arg-type]
         fast_closure_rate=float(raw["fast_closure_rate"]),  # type: ignore[arg-type]
+    )
+
+
+def _parse_smoothing(raw: dict[str, object]) -> SmoothingConfig:
+    return SmoothingConfig(
+        enabled=bool(raw["enabled"]),
+        min_cutoff=float(raw["min_cutoff"]),  # type: ignore[arg-type]
+        beta=float(raw["beta"]),  # type: ignore[arg-type]
+        d_cutoff=float(raw["d_cutoff"]),  # type: ignore[arg-type]
     )
 
 

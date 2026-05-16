@@ -41,6 +41,28 @@ finger_degrees:
   ring: 5    # fifth
   pinky: 7   # seventh
 
+# --- Landmark smoothing (Phase 7B) ---
+# Optional one-euro filter on hand landmarks. Reduces visible jitter at
+# rest but trades against responsiveness during fast gestures.
+#
+# Disabled by default because on a decent webcam (720p+ at 30 FPS in
+# normal light) MediaPipe's raw output is already stable enough that
+# any added lag from smoothing is more noticeable than the residual
+# jitter. Enable it if your camera is noisy, the room is dim, or you
+# see distracting skeleton wobble at rest.
+#
+# enabled: master switch. False = passthrough (raw MediaPipe output).
+# min_cutoff: Hz. Lower = more smoothing of resting jitter (1.0 sane).
+# beta: speed coefficient. Higher = less smoothing during fast moves
+#   (less lag). 0.05 is a balanced starting point; raise toward 0.2+
+#   if pinches feel sluggish, lower toward 0.01 for more jitter rejection.
+# d_cutoff: velocity-filter cutoff in Hz. Rarely needs tuning.
+smoothing:
+  enabled: false
+  min_cutoff: 1.0
+  beta: 0.05
+  d_cutoff: 1.0
+
 # --- Second-hand modulation (Phase 6) ---
 # When both hands are visible, one plays notes and the other modulates
 # a continuous controller (default CC74 = filter cutoff). Raising the

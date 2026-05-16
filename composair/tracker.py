@@ -20,6 +20,7 @@ import mediapipe as mp
 import numpy as np
 
 from .gestures import Point2D
+from .smoothing import HandLandmarkSmoother, SmoothingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class HandTracker:
     def __init__(
         self,
         num_hands: int = 2,
+        smoothing: SmoothingConfig | None = None,
         min_detection_confidence: float = 0.5,
         min_presence_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
@@ -73,23 +75,51 @@ class HandTracker:
         self._latest: list[TrackedHand] | None = None
         self._lock = Lock()
         self._t0 = time.perf_counter()
-        logger.info("HandLandmarker ready (num_hands=%d)", num_hands)
+
+        # Per-hand smoothers, keyed by handedness label so a hand that
+        # briefly disappears and reappears keeps its filter state.
+        # Hands labeled "Left" or "Right" each get their own.
+        self._smoothing_cfg = smoothing or SmoothingConfig(enabled=False)
+        self._smoothers: dict[str, HandLandmarkSmoother] = {}
+        self._seen_this_frame: set[str] = set()
+
+        logger.info("HandLandmarker ready (num_hands=%d, smoothing=%s)",
+                    num_hands, "on" if self._smoothing_cfg.enabled else "off")
 
     def _on_result(self, result, output_image, timestamp_ms: int) -> None:
         # MediaPipe parallel arrays: result.hand_landmarks[i] and
         # result.handedness[i] correspond to the same detected hand.
+        timestamp_s = timestamp_ms / 1000.0
         hands: list[TrackedHand] = []
+        seen: set[str] = set()
         for hand_landmarks, handedness in zip(result.hand_landmarks, result.handedness):
             # handedness is a list of Category objects; the top one is the
             # model's best label for this hand.
             top = handedness[0] if handedness else None
             label = top.category_name if top is not None else "Right"
             score = float(top.score) if top is not None else 0.0
+            raw = [Point2D(lm.x, lm.y) for lm in hand_landmarks]
+
+            smoother = self._smoothers.get(label)
+            if smoother is None:
+                smoother = HandLandmarkSmoother(self._smoothing_cfg)
+                self._smoothers[label] = smoother
+            smoothed = smoother.filter(raw, timestamp_s)
+            seen.add(label)
+
             hands.append(TrackedHand(
-                landmarks=[Point2D(lm.x, lm.y) for lm in hand_landmarks],
+                landmarks=smoothed,
                 handedness=label,
                 handedness_score=score,
             ))
+
+        # Reset filters for hands that disappeared this frame so the next
+        # appearance does not interpolate from a stale position.
+        for label, smoother in self._smoothers.items():
+            if label not in seen and label in self._seen_this_frame:
+                smoother.reset()
+        self._seen_this_frame = seen
+
         with self._lock:
             self._latest = hands
 

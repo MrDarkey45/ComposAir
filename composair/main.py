@@ -108,7 +108,7 @@ def main() -> int:
 
     with Synth(soundfont=cfg.soundfont, instrument=cfg.instrument,
                audio_driver=cfg.audio_driver, sample_rate=cfg.sample_rate) as synth, \
-         HandTracker(num_hands=2) as tracker:
+         HandTracker(num_hands=2, smoothing=cfg.smoothing) as tracker:
 
         frame_count = 0
         fps_window_start = time.perf_counter()
