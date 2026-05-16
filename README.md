@@ -4,8 +4,6 @@ A webcam-based MIDI instrument. You pinch your fingers in the air, the program w
 
 I built this because I wanted to make music for video games but I don't play any instruments. The usual entry points (piano roll, MIDI keyboards, step sequencers) all assume some musical background I don't have. ComposAir lets you noodle around with your hands until something sounds good, captures it as a `.mid`, and you take it into FL Studio / Reaper / Ableton / GarageBand to build a song around it.
 
-I built this as a multi-week solo engineering project to manage a real codebase end to end - design, phased implementation, testing, calibration, packaging, and documentation - and to have something portfolio-worthy at the end.
-
 ## What it does
 
 - Tracks both your hands through the webcam in real time
