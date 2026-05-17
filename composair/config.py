@@ -47,10 +47,16 @@ class Config:
     camera_height: int
     camera_fps: int
 
-    # 2D pinch thresholds per finger: {Finger: (on, off)}.
+    # 2D pinch thresholds per finger for the playing hand: {Finger: (on, off)}.
     # MediaPipe accuracy is not uniform across the hand; per-finger tuning
     # is the right level of granularity for live retuning.
     pinch_thresholds_2d: dict[Finger, tuple[float, float]]
+
+    # 2D pinch thresholds per finger for the modulation (transport) hand.
+    # Separate from the playing hand because the non-dominant hand typically
+    # pinches with different ergonomics. If absent from config, falls back
+    # to pinch_thresholds_2d at load time so older configs still load.
+    transport_thresholds_2d: dict[Finger, tuple[float, float]]
 
     # 3D pinch detection (world-space landmarks; preferred for occlusion-robustness)
     use_3d_pinches: bool
@@ -113,7 +119,10 @@ def load_config() -> Config:
         camera_width=int(data["camera_width"]),
         camera_height=int(data["camera_height"]),
         camera_fps=int(data["camera_fps"]),
-        pinch_thresholds_2d=_parse_pinch_thresholds_2d(data),
+        pinch_thresholds_2d=_parse_pinch_thresholds_2d(data, key="pinch_thresholds"),
+        transport_thresholds_2d=_parse_pinch_thresholds_2d(
+            data, key="transport_thresholds", fallback_key="pinch_thresholds"
+        ),
         use_3d_pinches=bool(data.get("use_3d_pinches", True)),
         pinch_threshold_3d=float(data.get("pinch_threshold_3d", 0.50)),
         pinch_release_3d=float(data.get("pinch_release_3d", 0.65)),
@@ -131,42 +140,59 @@ def load_config() -> Config:
 
 def _parse_pinch_thresholds_2d(
     data: dict[str, object],
+    key: str = "pinch_thresholds",
+    fallback_key: str | None = None,
 ) -> dict[Finger, tuple[float, float]]:
     """Read 2D pinch thresholds with backwards compatibility.
 
-    Prefers the per-finger pinch_thresholds map. Falls back to the older
-    universal pinch_threshold / pinch_release pair if the map is missing,
-    so configs saved by Phase 7A or 7B still load.
+    The function is parameterized on the YAML key so both the playing-hand
+    thresholds ("pinch_thresholds") and the transport-hand thresholds
+    ("transport_thresholds") can share the parser.
+
+    Fallback chain:
+    1. Try the requested `key` as a per-finger map.
+    2. If absent and a `fallback_key` is supplied, try that as a per-finger
+       map (used so transport falls back to playing-hand values when the
+       user has not customized transport yet).
+    3. Final fallback: legacy universal `pinch_threshold`/`pinch_release`.
     """
-    per_finger = data.get("pinch_thresholds")
+    per_finger = data.get(key)
+    if per_finger is None and fallback_key is not None:
+        per_finger = data.get(fallback_key)
     if isinstance(per_finger, dict):
         out: dict[Finger, tuple[float, float]] = {}
         for finger in Finger:
             entry = per_finger.get(finger.value)
             if not isinstance(entry, dict):
                 raise ValueError(
-                    f"pinch_thresholds missing finger '{finger.value}' "
+                    f"{key} missing finger '{finger.value}' "
                     f"or value is not a mapping"
                 )
-            # Accept both new (trigger/release) and legacy (on/off, where
-            # YAML 1.1 turns the keys into booleans True/False). The
-            # canonical schema is trigger/release.
+            # Accept new (trigger/release) plus two legacy variants of
+            # on/off: booleans True/False (from unquoted YAML 1.1 keys)
+            # and the literal strings "on"/"off" (from quoted-key configs
+            # written by an earlier panel before this fix). The canonical
+            # schema is trigger/release.
             trigger = entry.get("trigger")
             release = entry.get("release")
             if trigger is None and True in entry:
                 trigger = entry[True]
             if release is None and False in entry:
                 release = entry[False]
+            if trigger is None and "on" in entry:
+                trigger = entry["on"]
+            if release is None and "off" in entry:
+                release = entry["off"]
             if trigger is None or release is None:
                 raise ValueError(
-                    f"pinch_thresholds['{finger.value}']: "
+                    f"{key}['{finger.value}']: "
                     f"missing 'trigger' or 'release' key"
                 )
             on = float(trigger)
             off = float(release)
             if on >= off:
                 raise ValueError(
-                    f"pinch_thresholds['{finger.value}']: "
+                    f"{key}['{finger.value}']: "
                     f"trigger ({on}) must be < release ({off})"
                 )
             out[finger] = (on, off)

@@ -34,6 +34,17 @@ pinch_thresholds:
   ring:   {trigger: 0.18, release: 0.23}
   pinky:  {trigger: 0.18, release: 0.23}
 
+# Per-finger 2D pinch thresholds for the modulation (left / non-playing)
+# hand. These drive the transport pinches (next/prev key, next/prev
+# scale) and are independent of pinch_thresholds above. Defaulting
+# slightly higher because the non-dominant hand typically pinches with
+# looser ergonomics. Tune in the settings panel's "Left (transport)" tab.
+transport_thresholds:
+  index:  {trigger: 0.22, release: 0.27}
+  middle: {trigger: 0.22, release: 0.27}
+  ring:   {trigger: 0.22, release: 0.27}
+  pinky:  {trigger: 0.22, release: 0.27}
+
 # 3D pinch detection uses world-space (meters relative to hand center)
 # landmarks instead of 2D screen coordinates. View-angle independent
 # and resistant to finger-occlusion false triggers, but currently

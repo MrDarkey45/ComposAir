@@ -80,3 +80,7 @@ recordings/
 build/
 dist/
 *.manifest
+# Release zips built from the dist/ bundle (uploaded to GitHub Releases,
+# not committed; they are hundreds of MB)
+composair-*.zip
+composair-*.tar.gz

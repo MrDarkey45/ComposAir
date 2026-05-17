@@ -85,16 +85,40 @@ def draw_fps(frame: np.ndarray, fps: float) -> None:
 def draw_help(frame: np.ndarray) -> None:
     """Bottom-right hint for the keyboard controls.
 
-    Two lines so the full hotkey set fits without overlapping the rest
-    of the UI on a 1280 wide frame.
+    Three lines: app actions, scale/key hotkeys, and left-hand transport
+    pinches. Fits on a 1280-wide frame without overlapping the CC bar.
     """
     h, w = frame.shape[:2]
     line1 = "Q quit | R record | S settings | [ ] instrument"
-    line2 = "1-7 key | M maj  n min  h harm  d dor  P pent+  p pent-"
-    cv2.putText(frame, line1, (w - 360, h - 44),
+    line2 = "1-7 key | m maj/min  p pent+/-  h harmonic  d dorian"
+    line3 = "L hand pinch: index +key  middle -key  ring +scale  pinky -scale"
+    cv2.putText(frame, line1, (w - 380, h - 68),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 180, 180), 2)
-    cv2.putText(frame, line2, (w - 510, h - 20),
+    cv2.putText(frame, line2, (w - 460, h - 44),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 2)
+    cv2.putText(frame, line3, (w - 560, h - 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 200), 2)
+
+
+def draw_transport_flash(frame: np.ndarray, text: str) -> None:
+    """Big centered banner for transport-pinch feedback.
+
+    Drawn on top of the camera feed for a short window after a transport
+    pinch fires, so the user sees confirmation without watching the
+    top-right text. main.py controls the visibility window via flash_until.
+    """
+    h, w = frame.shape[:2]
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.4, 3)
+    x = (w - tw) // 2
+    y = h // 2 + th // 2
+    # Translucent dark backdrop so the text stays readable over any frame.
+    pad = 14
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x - pad, y - th - pad), (x + tw + pad, y + pad),
+                  color=(0, 0, 0), thickness=-1)
+    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+    cv2.putText(frame, text, (x, y),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.4, (255, 220, 80), 3)
 
 
 def draw_modulation_hand(frame: np.ndarray, landmarks: list[Point2D]) -> None:

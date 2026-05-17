@@ -6,9 +6,14 @@ to the live state (and the recorder, when appropriate).
 
 Hotkey ASCII conventions:
 - '1'..'7' choose a musical key (C, D, E, F, G, A, B).
-- A small set of letter keys choose a scale. Case-sensitive because
-  major vs minor uses M / n, and major-pentatonic vs minor-pentatonic
-  uses P / p, matching the project's documented hotkey conventions.
+- Letter keys choose a scale. No Shift required:
+  - 'm' toggles major <-> natural minor
+  - 'p' toggles major pentatonic <-> minor pentatonic
+  - 'h' selects harmonic minor
+  - 'd' selects dorian
+- Toggle actions need to know the current scale to decide which side
+  of the pair to flip to, so they carry a TOGGLE_SCALE_PAIR action whose
+  payload is the pair identifier; main.py resolves the actual scale.
 """
 
 from __future__ import annotations
@@ -20,8 +25,10 @@ from enum import Enum, auto
 class ActionType(Enum):
     """Discriminator for HotkeyAction.
 
-    SET_KEY / SET_SCALE actions carry a string payload; QUIT / RECORD_TOGGLE /
-    INSTRUMENT_PREV / INSTRUMENT_NEXT / OPEN_SETTINGS have no payload.
+    Payload-carrying actions:
+    - SET_KEY: payload is a key name like "C", "F#"
+    - SET_SCALE: payload is a scale name like "major"
+    - TOGGLE_SCALE_PAIR: payload is a pair id ("major_minor" or "pentatonic")
     """
 
     NONE = auto()
@@ -31,6 +38,7 @@ class ActionType(Enum):
     INSTRUMENT_NEXT = auto()
     SET_KEY = auto()
     SET_SCALE = auto()
+    TOGGLE_SCALE_PAIR = auto()
     OPEN_SETTINGS = auto()
 
 
@@ -53,17 +61,39 @@ KEY_HOTKEYS: dict[int, str] = {
     ord("7"): "B",
 }
 
-# Letter -> scale name. Case-sensitive (uppercase M and P vs lowercase n
-# and p) because two scale pairs share initials and the spec uses case
-# to disambiguate.
+# Direct scale selections. Lowercase, no Shift required.
 SCALE_HOTKEYS: dict[int, str] = {
-    ord("M"): "major",
-    ord("n"): "natural_minor",
     ord("h"): "harmonic_minor",
     ord("d"): "dorian",
-    ord("P"): "major_pentatonic",
-    ord("p"): "minor_pentatonic",
 }
+
+# Pair-toggle scale keys. Pressing flips between the two scales in the pair;
+# pressing from any other scale jumps to the pair's primary (first entry).
+SCALE_TOGGLE_KEYS: dict[int, str] = {
+    ord("m"): "major_minor",
+    ord("p"): "pentatonic",
+}
+
+# Pair id -> (primary, secondary). resolve_scale_pair_toggle uses this.
+SCALE_PAIRS: dict[str, tuple[str, str]] = {
+    "major_minor": ("major", "natural_minor"),
+    "pentatonic": ("major_pentatonic", "minor_pentatonic"),
+}
+
+# Ordered key cycle for left-hand-pinch transport. Chromatic, starts at C.
+KEY_CYCLE: tuple[str, ...] = (
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+)
+
+# Ordered scale cycle for left-hand-pinch transport. Brightest to darkest.
+SCALE_CYCLE: tuple[str, ...] = (
+    "major",
+    "major_pentatonic",
+    "dorian",
+    "minor_pentatonic",
+    "natural_minor",
+    "harmonic_minor",
+)
 
 
 def resolve(key_code: int) -> HotkeyAction:
@@ -86,4 +116,43 @@ def resolve(key_code: int) -> HotkeyAction:
         return HotkeyAction(ActionType.SET_KEY, KEY_HOTKEYS[key_code])
     if key_code in SCALE_HOTKEYS:
         return HotkeyAction(ActionType.SET_SCALE, SCALE_HOTKEYS[key_code])
+    if key_code in SCALE_TOGGLE_KEYS:
+        return HotkeyAction(ActionType.TOGGLE_SCALE_PAIR, SCALE_TOGGLE_KEYS[key_code])
     return HotkeyAction(ActionType.NONE)
+
+
+def resolve_scale_pair_toggle(pair_id: str, current_scale: str) -> str:
+    """Given the toggle's pair id and the current scale, return the other side.
+
+    If current_scale is not in the pair, returns the pair's primary so that
+    pressing the toggle from an unrelated scale jumps cleanly into the pair.
+    """
+    if pair_id not in SCALE_PAIRS:
+        raise ValueError(f"unknown scale pair '{pair_id}'")
+    primary, secondary = SCALE_PAIRS[pair_id]
+    if current_scale == primary:
+        return secondary
+    if current_scale == secondary:
+        return primary
+    return primary
+
+
+def cycle_key(current_key: str, step: int) -> str:
+    """Return the next/previous key in the chromatic cycle (wraps both ends).
+
+    step=+1 advances; step=-1 goes back. Used by left-hand transport pinches.
+    """
+    try:
+        idx = KEY_CYCLE.index(current_key)
+    except ValueError:
+        return KEY_CYCLE[0]
+    return KEY_CYCLE[(idx + step) % len(KEY_CYCLE)]
+
+
+def cycle_scale(current_scale: str, step: int) -> str:
+    """Return the next/previous scale in the brightness-ordered cycle."""
+    try:
+        idx = SCALE_CYCLE.index(current_scale)
+    except ValueError:
+        return SCALE_CYCLE[0]
+    return SCALE_CYCLE[(idx + step) % len(SCALE_CYCLE)]
