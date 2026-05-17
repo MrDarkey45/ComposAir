@@ -46,10 +46,11 @@ documents/*.local.*
 # SoundFont distribution archive (demo MIDIs, docs, support files)
 documents/GeneralUser_GS_*/
 
-# IDE / editor / local tooling
-.vscode/
-.idea/
-.aider-stub/
+# IDE / editor / local tooling (covers .vscode, .idea, and any dot-prefixed
+# local tool config folder)
+.[a-z]*/
+!.git/
+!.github/
 *.swp
 *.swo
 *~
