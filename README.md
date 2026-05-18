@@ -104,14 +104,20 @@ Each module owns one thing and has unit tests. There are 69 of them across the m
 
 ## Requirements
 
-- Windows 10 or 11 (the code is mostly cross-platform but I have only tested on Windows)
-- Python 3.10-3.12 (MediaPipe does not ship Windows wheels for 3.13+ yet)
-- Any webcam at 720p / 30 FPS or better
-- Wired headphones or speakers (Bluetooth audio has too much latency)
+- Windows 10/11, macOS, or Linux. The packaged `.exe` on the Releases page is Windows only; macOS and Linux users run from source (see the install steps below).
+- Python 3.10-3.12 (MediaPipe does not ship wheels for 3.13+ yet on all platforms).
+- Any webcam at 720p / 30 FPS or better.
+- Wired headphones or speakers (Bluetooth audio has too much latency).
+
+Tested on Windows 11 with an Emeet 4K AF webcam. macOS and Linux paths are coded but not personally verified.
 
 ## Installation
 
 ### 1. Install FluidSynth (the C library, separate from the Python wrapper)
+
+**macOS:** `brew install fluidsynth`
+
+**Linux (Debian/Ubuntu):** `sudo apt install fluidsynth`
 
 **Windows:**
 1. Download `fluidsynth-vX.X.X-win10-x64-glib.zip` from the [FluidSynth releases page](https://github.com/FluidSynth/fluidsynth/releases).
@@ -119,9 +125,7 @@ Each module owns one thing and has unit tests. There are 69 of them across the m
 3. Add the `bin` folder inside that to your User `PATH`.
 4. Open a new terminal and run `fluidsynth --version` to confirm.
 
-**macOS:** `brew install fluidsynth`
-
-**Linux (Debian/Ubuntu):** `sudo apt install fluidsynth`
+Verify on any platform: `fluidsynth --version` should print a version banner.
 
 ### 2. Download a SoundFont
 
@@ -175,6 +179,12 @@ The full schema with comments is in `config.example.yaml`.
 
 **"Camera not available" dialog at startup**
 Something else is holding the camera. Close Teams, Zoom, OBS, browser tabs, or the Windows Camera app and click Retry. If you have multiple cameras try changing `camera_index` in `config.yaml` to 1 or 2.
+
+**macOS asks for camera permission on first run**
+That's expected. Grant access in System Settings -> Privacy & Security -> Camera. If you skipped or denied the prompt, ComposAir won't see any cameras.
+
+**macOS won't run an unsigned app or shows a "developer cannot be verified" warning**
+That only applies if you build your own `.app` bundle. Running from source via `python -m composair.main` doesn't trigger it.
 
 **`fluidsynth --version` says command not found**
 PATH probably did not update. Open a fresh terminal. If it still does not work, double-check the directory you added to PATH actually contains `fluidsynth.exe`.

@@ -46,6 +46,7 @@ class Config:
     camera_width: int
     camera_height: int
     camera_fps: int
+    camera_backend: str  # 'auto', 'dshow', 'msmf', 'avfoundation', 'v4l2', 'any'
 
     # 2D pinch thresholds per finger for the playing hand: {Finger: (on, off)}.
     # MediaPipe accuracy is not uniform across the hand; per-finger tuning
@@ -119,6 +120,7 @@ def load_config() -> Config:
         camera_width=int(data["camera_width"]),
         camera_height=int(data["camera_height"]),
         camera_fps=int(data["camera_fps"]),
+        camera_backend=str(data.get("camera_backend", "auto")),
         pinch_thresholds_2d=_parse_pinch_thresholds_2d(data, key="pinch_thresholds"),
         transport_thresholds_2d=_parse_pinch_thresholds_2d(
             data, key="transport_thresholds", fallback_key="pinch_thresholds"

@@ -25,6 +25,7 @@ from pathlib import Path
 import cv2
 
 from .camera import open_camera
+from .platform_defaults import resolve_audio_driver, resolve_camera_backend
 from .config import load_config
 from .paths import resource_root
 from .gestures import (
@@ -94,10 +95,16 @@ def main() -> int:
     configure_logging()
     cfg = load_config()
 
-    cap = open_camera(cfg.camera_index, cfg.camera_width, cfg.camera_height, cfg.camera_fps)
+    camera_backend = resolve_camera_backend(cfg.camera_backend)
+    cap = open_camera(
+        cfg.camera_index, cfg.camera_width, cfg.camera_height, cfg.camera_fps,
+        backend=camera_backend,
+    )
     if cap is None:
         logger.info("User cancelled camera setup; exiting")
         return 1
+    audio_driver = resolve_audio_driver(cfg.audio_driver)
+    logger.info("Audio driver: %s (configured: %s)", audio_driver, cfg.audio_driver)
 
     # One detector + one velocity estimator per finger so they fire
     # independently. Live tunables are kept mutable so the settings panel
@@ -166,7 +173,7 @@ def main() -> int:
     flash_until = 0.0
 
     with Synth(soundfont=cfg.soundfont, instrument=cfg.instrument,
-               audio_driver=cfg.audio_driver, sample_rate=cfg.sample_rate) as synth, \
+               audio_driver=audio_driver, sample_rate=cfg.sample_rate) as synth, \
          HandTracker(num_hands=2, smoothing=cfg.smoothing) as tracker:
 
         frame_count = 0

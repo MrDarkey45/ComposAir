@@ -28,14 +28,20 @@ def open_camera(
     width: int,
     height: int,
     fps: int,
+    backend: int = cv2.CAP_DSHOW,
 ) -> cv2.VideoCapture | None:
     """Open a camera, retry on failure with a user-visible dialog.
+
+    `backend` is the cv2 VideoCapture backend constant. The right value
+    is platform-dependent; resolve it via platform_defaults.resolve_camera_backend
+    upstream rather than hardcoding here. Defaulting to CAP_DSHOW keeps
+    older call sites working until they update.
 
     Returns the opened VideoCapture, or None if the user chose to quit
     rather than retry.
     """
     while True:
-        cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+        cap = cv2.VideoCapture(index, backend)
         if not cap.isOpened():
             cap.release()
             if not _ask_retry(_no_camera_message(index)):

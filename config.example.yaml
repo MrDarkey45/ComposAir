@@ -5,11 +5,19 @@
 # --- Audio / synth ---
 soundfont: soundfonts/GeneralUser-GS.sf2
 instrument: 0          # General MIDI program number (0 = Acoustic Grand Piano)
-audio_driver: dsound   # Windows: dsound (default), wasapi (lower latency)
+# FluidSynth audio driver. 'auto' picks based on OS:
+#   Windows -> dsound, macOS -> coreaudio, Linux -> pulseaudio.
+# Explicit values let advanced users override (e.g. wasapi for lower
+# latency on Windows, jack on Linux).
+audio_driver: auto
 sample_rate: 44100
 
 # --- Camera ---
 camera_index: 0        # 0 = first camera; try 1, 2, ... if you have multiple
+# OpenCV camera backend. 'auto' picks based on OS:
+#   Windows -> dshow, macOS -> avfoundation, Linux -> v4l2.
+# Override values: dshow, msmf, avfoundation, v4l2, any.
+camera_backend: auto
 camera_width: 1280
 camera_height: 720
 camera_fps: 30
