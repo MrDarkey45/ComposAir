@@ -24,7 +24,7 @@ from pathlib import Path
 
 import cv2
 
-from .camera import open_camera
+from .camera import open_camera, read_frame
 from .platform_defaults import resolve_audio_driver, resolve_camera_backend
 from .config import load_config
 from .paths import resource_root
@@ -66,6 +66,10 @@ from .ui import (
     draw_transport_flash,
     draw_velocity_readout,
 )
+
+# After this many consecutive failed reads (~1 s at 30 FPS) the camera is
+# assumed lost and the user is prompted to retry or quit.
+_MAX_CONSECUTIVE_CAM_FAILURES = 30
 
 WINDOW_TITLE = "ComposAir"
 PROJECT_ROOT = resource_root()
@@ -179,13 +183,38 @@ def main() -> int:
         frame_count = 0
         fps_window_start = time.perf_counter()
         fps = 0.0
+        consecutive_cam_failures = 0
 
         try:
             while True:
-                ok, frame = cap.read()
+                ok, frame = read_frame(cap)
                 if not ok:
-                    logger.warning("Camera read failed; skipping frame")
+                    consecutive_cam_failures += 1
+                    if consecutive_cam_failures >= _MAX_CONSECUTIVE_CAM_FAILURES:
+                        logger.error(
+                            "Camera lost after %d consecutive failures; "
+                            "attempting to reopen",
+                            consecutive_cam_failures,
+                        )
+                        cap.release()
+                        cap = open_camera(
+                            cfg.camera_index,
+                            cfg.camera_width,
+                            cfg.camera_height,
+                            cfg.camera_fps,
+                            backend=camera_backend,
+                        )
+                        if cap is None:
+                            logger.info("User cancelled camera reopen; exiting")
+                            break
+                        consecutive_cam_failures = 0
+                    else:
+                        logger.warning(
+                            "Camera read failed; skipping frame (%d)",
+                            consecutive_cam_failures,
+                        )
                     continue
+                consecutive_cam_failures = 0
 
                 # Mirror horizontally so the user's right hand appears on the
                 # right side of the screen. Feels natural like a mirror.

@@ -25,12 +25,15 @@ _AUDIO_DRIVER_BY_PLATFORM: dict[str, str] = {
 
 # OpenCV camera capture backends per platform. Choosing the right one matters
 # more than people expect: on Windows, DSHOW opens fast and is reliable; the
-# default MSMF backend is slower and sometimes flaky. On macOS, AVFOUNDATION
-# is the only sane choice (the default falls back to QTKit which is removed).
-# On Linux, V4L2 is the standard for USB webcams.
+# default MSMF backend is slower and sometimes flaky. On macOS we let OpenCV
+# pick (CAP_ANY) because forcing CAP_AVFOUNDATION causes the capture pipeline
+# to drop the first several frames on some hardware (verified on Apple
+# silicon with the built-in FaceTime camera); CAP_ANY internally selects
+# AVFoundation but goes through a more lenient init path that delivers
+# frames from frame zero. On Linux, V4L2 is the standard for USB webcams.
 _CAMERA_BACKEND_BY_PLATFORM: dict[str, int] = {
     "win32": cv2.CAP_DSHOW,
-    "darwin": cv2.CAP_AVFOUNDATION,
+    "darwin": cv2.CAP_ANY,
     "linux": cv2.CAP_V4L2,
 }
 

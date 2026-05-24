@@ -4,3 +4,8 @@ pyFluidSynth==1.3.4
 numpy>=1.26,<2
 PyYAML==6.0.3
 mido==1.3.3
+# Required only on macOS: opencv-python's AVFoundation wrapper hangs
+# sustained capture after ~80 frames on Apple silicon; PyAV uses FFmpeg's
+# AVFoundation input device which is a different, working code path.
+# Unused on Windows / Linux but harmless to install.
+av==17.0.1
